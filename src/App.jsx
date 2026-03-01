@@ -57,6 +57,26 @@ function App() {
   const [searchTerm, setSearchTerm] = useState('');
   const [formList, setFormList] = useState([]);
 
+  const [dialogConfig, setDialogConfig] = useState(null);
+
+  const showDialog = (type, message, title = '') => {
+    return new Promise((resolve) => {
+      setDialogConfig({
+        type,
+        message,
+        title,
+        onConfirm: (val) => {
+          setDialogConfig(null);
+          resolve(val !== undefined ? val : true);
+        },
+        onCancel: () => {
+          setDialogConfig(null);
+          resolve(type === 'prompt' ? null : false);
+        }
+      });
+    });
+  };
+
   // Note: Local storage init removed entirely as we use the backend API now
 
   // Generators for unique ids
@@ -153,15 +173,17 @@ function App() {
   const profitLossRealisasi = grandTotalRealisasi - grandTotalInternal;
 
   // Top Action Handlers
-  const handleNewForm = () => {
+  const handleNewForm = async () => {
     if (activeTab === 'realisasi') {
-      if (window.confirm('Select a Budget Form to create a Realisasi from? Unsaved changes will be lost.')) {
+      const confirmed = await showDialog('confirm', 'Select a Budget Form to create a Realisasi from? Unsaved changes will be lost.', 'Confirm New Form');
+      if (confirmed) {
         setModalMode('new-realisasi');
         setShowLoadModal(true);
         fetchForms(searchTerm, 'budget');
       }
     } else {
-      if (window.confirm('Are you sure you want to start a new form? Unsaved changes will be lost.')) {
+      const confirmed = await showDialog('confirm', 'Are you sure you want to start a new form? Unsaved changes will be lost.', 'Confirm New Form');
+      if (confirmed) {
         setEventData({ projectNo: '', name: '', venue: '', periode: '', periodeStart: '', periodeEnd: '', note: '' });
         setItems([{ id: generateId(), name: 'NEW SECTION', subs: [] }]);
         setCurrentFormId(null);
@@ -206,17 +228,17 @@ function App() {
         setCurrentFormId(result.id);
       }
 
-      alert('Form saved successfully to Database!');
+      await showDialog('alert', 'Form saved successfully to Database!', 'Success');
     } catch (error) {
       console.error(error);
-      alert('Failed to save to Database');
+      await showDialog('alert', 'Failed to save to Database', 'Error');
     }
   };
 
   const handleDeleteForm = async () => {
     if (!currentFormId) return;
 
-    const password = window.prompt("Enter password to delete this form:");
+    const password = await showDialog('prompt', 'Enter password to delete this form:', 'Delete Form');
     if (password === null) return; // cancel clicked
 
     try {
@@ -228,14 +250,14 @@ function App() {
 
       if (!response.ok) {
         if (response.status === 401) {
-          alert('Incorrect password!');
+          await showDialog('alert', 'Incorrect password!', 'Error');
         } else {
           throw new Error('Delete failed');
         }
         return;
       }
 
-      alert('Form deleted successfully!');
+      await showDialog('alert', 'Form deleted successfully!', 'Success');
       // Reset form to blank state
       setEventData({ projectNo: '', name: '', venue: '', periode: '', periodeStart: '', periodeEnd: '', note: '' });
       setItems([{ id: generateId(), name: 'NEW SECTION', subs: [] }]);
@@ -244,7 +266,7 @@ function App() {
 
     } catch (error) {
       console.error(error);
-      alert('Failed to delete form');
+      await showDialog('alert', 'Failed to delete form', 'Error');
     }
   };
 
@@ -260,8 +282,9 @@ function App() {
     }
   };
 
-  const openLoadModal = () => {
-    if (window.confirm(`Apakah Anda sudah menyimpan form ${activeTab} ini sebelumnya? Segala perubahan yang belum tersimpan akan hilang. Lanjutkan memuat form lain?`)) {
+  const openLoadModal = async () => {
+    const confirmed = await showDialog('confirm', `Apakah Anda sudah menyimpan form ${activeTab} ini sebelumnya? Segala perubahan yang belum tersimpan akan hilang. Lanjutkan memuat form lain?`, 'Confirm Load Form');
+    if (confirmed) {
       setModalMode('load');
       setShowLoadModal(true);
       fetchForms(searchTerm, activeTab);
@@ -308,7 +331,7 @@ function App() {
       }
     } catch (e) {
       console.error('Failed to load form', e);
-      alert('Failed to load form details');
+      await showDialog('alert', 'Failed to load form details', 'Error');
     }
   };
 
@@ -318,6 +341,9 @@ function App() {
     const displayPeriode = eventData.periodeStart && eventData.periodeEnd
       ? `${eventData.periodeStart} to ${eventData.periodeEnd}`
       : eventData.periode;
+
+    // Helper for formatting
+    const acctFormat = '#,##0.00';
 
     // Header
     wsData.push([`PROJECT NO.`, eventData.projectNo]);
@@ -331,63 +357,143 @@ function App() {
     if (activeTab === 'realisasi') headerRow.push('REALISASI');
     wsData.push(headerRow);
 
+    let currentRowIdx = 6; // Data starts at row 7 (1-indexed: 1-4 header, 5 blank, 6 table header)
+
+    // To construct SUM formulas later
+    const internalSubRows = [];
+    const budgetSubRows = [];
+    const realisasiSubRows = [];
+
     // Items
     items.forEach(main => {
       const mainRow = [main.name, '', '', '', ''];
       if (activeTab === 'realisasi') mainRow.push('');
       wsData.push(mainRow); // Main Title
+      currentRowIdx++;
 
       main.subs.forEach(sub => {
-        const intTot = sub.qty * sub.mdy * sub.internalRate;
-        const budgTot = sub.qty * sub.mdy * sub.rate;
+        currentRowIdx++; // Increment for each sub item row
+        const rowNum = currentRowIdx;
+
+        // Formulas for totals
+        const internalFormula = `B${rowNum}*C${rowNum}*D${rowNum}`;
+        const budgetFormula = `B${rowNum}*C${rowNum}*E${rowNum}`;
         const realTot = sub.actualRate || 0;
 
         const subRow = [
           `   ${sub.name}`,
-          sub.qty,
-          sub.mdy,
-          intTot,
-          budgTot
+          { v: sub.qty, t: 'n' },
+          { v: sub.mdy, t: 'n' },
+          { v: sub.internalRate, t: 'n', z: acctFormat }, // Internal Rate (Column D)
+          { v: sub.rate, t: 'n', z: acctFormat },         // Rate (Column E)
+          // We don't put the formula in the array yet, XLSX helper can take objects
         ];
-        if (activeTab === 'realisasi') subRow.push(realTot);
+
+        // Replace indices 3/4 with the actual calculated columns if we want to show it there, wait no:
+        // Col A: Desc
+        // Col B: Qty
+        // Col C: Mdy
+        // Col D: Internal RATE (wait, existing code puts TOTAL here, let's fix that)
+
+        // Let's adjust to match existing export:
+        // Existing: A: Desc, B: Qty, C: MDY, D: Internal TOTAL, E: Budget TOTAL
+        // But we need the rate to calculate the total via formula!
+        // So let's add rate columns, or just use the values and put formulas in D & E.
+        // Actually, user just wants format and formulas for totals.
+        // Let's keep the columns but use formulas for D and E. Wait, where does the rate come from if it's not in a cell?
+        // We MUST put the rate in a cell for the formula `B*C*Rate` to work, OR we hardcode the rate into the formula like `B*C*500000`.
+        // Let's hardcode the rate into the formula since the columns don't exist.
+
+        const internalF = `B${rowNum}*C${rowNum}*${sub.internalRate}`;
+        const budgetF = `B${rowNum}*C${rowNum}*${sub.rate}`;
+
+        subRow[3] = { v: sub.qty * sub.mdy * sub.internalRate, f: internalF, t: 'n', z: acctFormat };
+        subRow[4] = { v: sub.qty * sub.mdy * sub.rate, f: budgetF, t: 'n', z: acctFormat };
+
+        internalSubRows.push(`D${rowNum}`);
+        budgetSubRows.push(`E${rowNum}`);
+
+        if (activeTab === 'realisasi') {
+          subRow.push({ v: realTot, t: 'n', z: acctFormat });
+          realisasiSubRows.push(`F${rowNum}`);
+        }
         wsData.push(subRow);
       });
     });
 
     wsData.push([]);
+    currentRowIdx++;
+
+    // Helper to generate sum formula
+    const sumSub = (arr) => arr.length > 0 ? arr.join('+') : '0';
 
     // Subtotals
-    const rowSubtotal = ['SUBTOTAL', '', '', subtotalInternal, subtotalBudget];
-    if (activeTab === 'realisasi') rowSubtotal.push('');
+    currentRowIdx++;
+    const subtotalRow = currentRowIdx;
+    const rowSubtotal = ['SUBTOTAL', '', ''];
+    rowSubtotal.push({ v: subtotalInternal, f: sumSub(internalSubRows), t: 'n', z: acctFormat }); // D
+    rowSubtotal.push({ v: subtotalBudget, f: sumSub(budgetSubRows), t: 'n', z: acctFormat }); // E
+    if (activeTab === 'realisasi') rowSubtotal.push({ v: subtotalRealisasi, f: sumSub(realisasiSubRows), t: 'n', z: acctFormat }); // F
     wsData.push(rowSubtotal);
 
-    const rowMgmt = ['MANAGEMENT FEE (10%)', '', '', '', managementFee];
+    currentRowIdx++;
+    const mgmtRow = currentRowIdx;
+    const rowMgmt = ['MANAGEMENT FEE (10%)', '', ''];
+    rowMgmt.push('');
+    rowMgmt.push({ v: managementFee, f: `E${subtotalRow}*0.1`, t: 'n', z: acctFormat });
     if (activeTab === 'realisasi') rowMgmt.push('');
     wsData.push(rowMgmt);
 
-    const rowTotal = ['TOTAL', '', '', totalInternal, totalBudget];
+    currentRowIdx++;
+    const totalRow = currentRowIdx;
+    const rowTotal = ['TOTAL', '', ''];
+    rowTotal.push({ v: totalInternal, f: `D${subtotalRow}`, t: 'n', z: acctFormat });
+    rowTotal.push({ v: totalBudget, f: `E${subtotalRow}+E${mgmtRow}`, t: 'n', z: acctFormat });
     if (activeTab === 'realisasi') rowTotal.push('');
     wsData.push(rowTotal);
 
-    const rowPPN = ['PPN (11%)', '', '', '', ppn];
+    currentRowIdx++;
+    const ppnRow = currentRowIdx;
+    const rowPPN = ['PPN (11%)', '', ''];
+    rowPPN.push('');
+    rowPPN.push({ v: ppn, f: `E${totalRow}*0.11`, t: 'n', z: acctFormat });
     if (activeTab === 'realisasi') rowPPN.push('');
     wsData.push(rowPPN);
 
-    // Grand Total has the value!
-    const rowGrand = ['GRAND TOTAL', '', '', grandTotalInternal, grandTotalBudget];
-    if (activeTab === 'realisasi') rowGrand.push(grandTotalRealisasi);
+    currentRowIdx++;
+    const grandRow = currentRowIdx;
+    const rowGrand = ['GRAND TOTAL', '', ''];
+    rowGrand.push({ v: grandTotalInternal, f: `D${totalRow}`, t: 'n', z: acctFormat });
+    rowGrand.push({ v: grandTotalBudget, f: `E${totalRow}+E${ppnRow}`, t: 'n', z: acctFormat });
+    if (activeTab === 'realisasi') {
+      rowGrand.push({ v: grandTotalRealisasi, f: `F${subtotalRow}`, t: 'n', z: acctFormat });
+    }
     wsData.push(rowGrand);
 
     wsData.push([]);
-    wsData.push(['', '', '', 'Submitted Budget', grandTotalBudget]);
-    wsData.push(['', '', '', 'After PPN', afterPpn]);
-    wsData.push(['', '', '', 'After PPH', afterPph]);
-    wsData.push(['', '', '', 'P/L (Budget)', profitLoss]);
+    currentRowIdx++;
+
+    currentRowIdx++; const submittedRow = currentRowIdx;
+    wsData.push(['', '', '', 'Submitted Budget', { v: grandTotalBudget, f: `E${grandRow}`, t: 'n', z: acctFormat }]);
+
+    currentRowIdx++; const afterPpnRow = currentRowIdx;
+    wsData.push(['', '', '', 'After PPN', { v: afterPpn, f: `E${totalRow}`, t: 'n', z: acctFormat }]);
+
+    currentRowIdx++; const afterPphRow = currentRowIdx;
+    wsData.push(['', '', '', 'After PPH', { v: afterPph, f: `E${afterPpnRow}-(E${totalRow}*0.02)`, t: 'n', z: acctFormat }]);
+
+    currentRowIdx++; const plRow = currentRowIdx;
+    wsData.push(['', '', '', 'P/L (Budget)', { v: profitLoss, f: `E${afterPphRow}-D${grandRow}`, t: 'n', z: acctFormat }]);
 
     if (activeTab === 'realisasi') {
       wsData.push([]);
-      wsData.push(['', '', '', 'Actual Budget (Realisasi)', grandTotalRealisasi]);
-      wsData.push(['', '', '', 'P/L (Realisasi)', profitLossRealisasi]);
+      currentRowIdx++;
+
+      currentRowIdx++; const actualRow = currentRowIdx;
+      wsData.push(['', '', '', 'Actual Budget (Realisasi)', { v: grandTotalRealisasi, f: `F${grandRow}`, t: 'n', z: acctFormat }]);
+
+      currentRowIdx++; const plRealRow = currentRowIdx;
+      wsData.push(['', '', '', 'P/L (Realisasi)', { v: profitLossRealisasi, f: `E${actualRow}-D${grandRow}`, t: 'n', z: acctFormat }]);
     }
 
     wsData.push([]);
@@ -427,8 +533,9 @@ function App() {
           <button
             className={`btn btn-sm ${activeTab === 'budget' ? 'btn-primary' : 'btn-secondary'}`}
             style={{ border: 'none', boxShadow: 'none' }}
-            onClick={() => {
-              if (window.confirm("Switching tabs will discard unsaved changes. Switch?")) {
+            onClick={async () => {
+              const confirmed = await showDialog('confirm', "Switching tabs will discard unsaved changes. Switch?", "Confirm Switch");
+              if (confirmed) {
                 setActiveTab('budget');
                 setEventData({ projectNo: '', name: '', venue: '', periode: '', periodeStart: '', periodeEnd: '', note: '' });
                 setItems([{ id: generateId(), name: 'NEW SECTION', subs: [] }]);
@@ -441,8 +548,9 @@ function App() {
           <button
             className={`btn btn-sm ${activeTab === 'realisasi' ? 'btn-primary' : 'btn-secondary'}`}
             style={{ border: 'none', boxShadow: 'none' }}
-            onClick={() => {
-              if (window.confirm("Switching tabs will discard unsaved changes. Switch?")) {
+            onClick={async () => {
+              const confirmed = await showDialog('confirm', "Switching tabs will discard unsaved changes. Switch?", "Confirm Switch");
+              if (confirmed) {
                 setActiveTab('realisasi');
                 setEventData({ projectNo: '', name: '', venue: '', periode: '', periodeStart: '', periodeEnd: '', note: '' });
                 setItems([{ id: generateId(), name: 'NEW SECTION', subs: [] }]);
@@ -834,7 +942,55 @@ function App() {
         )
       }
 
-    </div >
+      {/* CUSTOM DIALOG MODAL */}
+      {dialogConfig && (
+        <div className="modal-overlay" style={{ zIndex: 9999 }}>
+          <div className="modal-content" style={{ maxWidth: '400px' }}>
+            <div className="modal-header">
+              <h2>{dialogConfig.title || 'Notification'}</h2>
+              <button onClick={dialogConfig.onCancel}><X size={24} /></button>
+            </div>
+            <div style={{ padding: '1rem 0' }}>
+              <p>{dialogConfig.message}</p>
+              {dialogConfig.type === 'prompt' && (
+                <input
+                  type={dialogConfig.title.toLowerCase().includes('password') ? 'password' : 'text'}
+                  autoFocus
+                  style={{ width: '100%', marginTop: '1rem', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      dialogConfig.onConfirm(e.target.value);
+                    } else if (e.key === 'Escape') {
+                      dialogConfig.onCancel();
+                    }
+                  }}
+                  id="prompt-input-modal"
+                />
+              )}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem' }}>
+              {dialogConfig.type !== 'alert' && (
+                <button className="btn btn-secondary" onClick={dialogConfig.onCancel}>Cancel</button>
+              )}
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  if (dialogConfig.type === 'prompt') {
+                    const el = document.getElementById('prompt-input-modal');
+                    dialogConfig.onConfirm(el ? el.value : '');
+                  } else {
+                    dialogConfig.onConfirm(true);
+                  }
+                }}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
   );
 }
 
