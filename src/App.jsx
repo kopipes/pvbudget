@@ -1,7 +1,10 @@
 import { useState, Fragment } from 'react';
-import { Plus, Trash2, PlusCircle, Save, FileDown, FilePlus, Search, X, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, PlusCircle, Save, FileDown, FilePlus, Search, X, AlertTriangle, LogOut, Shield } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import UserManagement from './UserManagement.jsx';
 import './App.css';
+
+const API = 'http://localhost:3001';
 
 // Helper to format currency
 const formatCurrency = (amount) => {
@@ -18,14 +21,14 @@ const parseCurrency = (str) => {
   return isNaN(parsed) ? 0 : parsed;
 };
 
-function App() {
+function App({ user, token, onLogout }) {
   const [activeTab, setActiveTab] = useState('budget'); // 'budget' or 'realisasi'
 
   const [eventData, setEventData] = useState({
-    projectNo: 'PROJ-001',
-    name: 'Premiere Wolf Man',
-    venue: 'Agora',
-    periode: '13 Januari 2025',
+    projectNo: '',
+    name: '',
+    venue: '',
+    periode: '',
     periodeStart: '',
     periodeEnd: '',
     note: ''
@@ -34,30 +37,34 @@ function App() {
   const [items, setItems] = useState([
     {
       id: 'm1',
-      name: 'PREMIERE',
-      subs: [
-        { id: 's1', name: 'Printing (Tent Card & A0)', qty: 1, mdy: 1, internalRate: 2000000, rate: 2000000, actualRate: 0 },
-        { id: 's2', name: 'Post Card', qty: 250, mdy: 1, internalRate: 7000, rate: 8000, actualRate: 0 }
-      ]
-    },
-    {
-      id: 'm2',
-      name: 'MANPOWER',
-      subs: [
-        { id: 's3', name: 'Crew Premiere', qty: 1, mdy: 1, internalRate: 300000, rate: 500000, actualRate: 0 }
-      ]
+      name: 'NEW SECTION',
+      subs: []
     }
   ]);
 
-  const [parentFormId, setParentFormId] = useState(null); // the budget id it refers to if in realisasi mode
-
+  const [parentFormId, setParentFormId] = useState(null);
   const [currentFormId, setCurrentFormId] = useState(null);
   const [showLoadModal, setShowLoadModal] = useState(false);
-  const [modalMode, setModalMode] = useState('load'); // 'load' or 'new-realisasi'
+  const [modalMode, setModalMode] = useState('load');
   const [searchTerm, setSearchTerm] = useState('');
   const [formList, setFormList] = useState([]);
+  const [isReadOnly, setIsReadOnly] = useState(false); // when manager views subordinate's form
+  const [showUserMgmt, setShowUserMgmt] = useState(false);
 
   const [dialogConfig, setDialogConfig] = useState(null);
+
+  // Auth header helper
+  const authHeaders = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`
+  };
+
+  // Role checks
+  const isAdmin = user.role === 'admin';
+  const isManager = user.role === 'manager';
+  const isUser = user.role === 'user';
+  const canEdit = !isReadOnly; // can edit if not in read-only mode
+  const canDelete = isAdmin; // only admin can delete
 
   const showDialog = (type, message, title = '') => {
     return new Promise((resolve) => {
@@ -77,13 +84,12 @@ function App() {
     });
   };
 
-  // Note: Local storage init removed entirely as we use the backend API now
-
   // Generators for unique ids
   const generateId = () => Math.random().toString(36).substr(2, 9);
 
   // State Handlers
   const addMainItem = () => {
+    if (!canEdit) return;
     setItems([
       ...items,
       { id: generateId(), name: 'NEW ITEM', subs: [] }
@@ -91,14 +97,17 @@ function App() {
   };
 
   const removeMainItem = (mainId) => {
+    if (!canEdit) return;
     setItems(items.filter(item => item.id !== mainId));
   };
 
   const updateMainItemName = (mainId, name) => {
+    if (!canEdit) return;
     setItems(items.map(item => item.id === mainId ? { ...item, name } : item));
   };
 
   const addSubItem = (mainId) => {
+    if (!canEdit) return;
     setItems(items.map(item => {
       if (item.id === mainId) {
         return {
@@ -114,6 +123,7 @@ function App() {
   };
 
   const removeSubItem = (mainId, subId) => {
+    if (!canEdit) return;
     setItems(items.map(item => {
       if (item.id === mainId) {
         return { ...item, subs: item.subs.filter(sub => sub.id !== subId) };
@@ -123,6 +133,7 @@ function App() {
   };
 
   const updateSubItem = (mainId, subId, field, value) => {
+    if (!canEdit) return;
     setItems(items.map(item => {
       if (item.id === mainId) {
         return {
@@ -146,10 +157,9 @@ function App() {
 
   items.forEach(item => {
     item.subs.forEach(sub => {
-      // Row calculations
       subtotalInternal += (sub.qty * sub.mdy * sub.internalRate);
       subtotalBudget += (sub.qty * sub.mdy * sub.rate);
-      subtotalRealisasi += (sub.actualRate || 0); // Realisasi is inputted as a total sum directly
+      subtotalRealisasi += (sub.actualRate || 0);
     });
   });
 
@@ -163,12 +173,9 @@ function App() {
   const grandTotalBudget = totalBudget + ppn;
   const grandTotalRealisasi = subtotalRealisasi;
 
-  const afterPpn = totalBudget; // Submitted budget without PPN
-
-  const pph = totalBudget * 0.02; // As deduced: 2% from Total (Before PPN)
-
+  const afterPpn = totalBudget;
+  const pph = totalBudget * 0.02;
   const afterPph = afterPpn - pph;
-
   const profitLoss = afterPph - grandTotalInternal;
   const profitLossRealisasi = grandTotalRealisasi - grandTotalInternal;
 
@@ -188,11 +195,14 @@ function App() {
         setItems([{ id: generateId(), name: 'NEW SECTION', subs: [] }]);
         setCurrentFormId(null);
         setParentFormId(null);
+        setIsReadOnly(false);
       }
     }
   };
 
   const handleSaveForm = async () => {
+    if (!canEdit) return;
+
     try {
       const dataToSave = {
         form_type: activeTab,
@@ -207,19 +217,30 @@ function App() {
         data: items
       };
 
-      let url = 'http://localhost:3001/api/forms';
+      let url = `${API}/api/forms`;
       let method = 'POST';
 
       if (currentFormId) {
-        url = `http://localhost:3001/api/forms/${currentFormId}`;
+        url = `${API}/api/forms/${currentFormId}`;
         method = 'PUT';
       }
 
       const response = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify(dataToSave)
       });
+
+      if (response.status === 401) {
+        await showDialog('alert', 'Session expired. Please login again.', 'Session Expired');
+        onLogout();
+        return;
+      }
+
+      if (response.status === 403) {
+        await showDialog('alert', 'You do not have permission to save this form.', 'Access Denied');
+        return;
+      }
 
       if (!response.ok) throw new Error('Save failed');
 
@@ -236,34 +257,36 @@ function App() {
   };
 
   const handleDeleteForm = async () => {
-    if (!currentFormId) return;
+    if (!currentFormId || !canDelete) return;
 
-    const password = await showDialog('prompt', 'Enter password to delete this form:', 'Delete Form');
-    if (password === null) return; // cancel clicked
+    const confirmed = await showDialog('confirm', 'Are you sure you want to delete this form? This action cannot be undone.', 'Delete Form');
+    if (!confirmed) return;
 
     try {
-      const response = await fetch(`http://localhost:3001/api/forms/${currentFormId}`, {
+      const response = await fetch(`${API}/api/forms/${currentFormId}`, {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password })
+        headers: authHeaders
       });
 
-      if (!response.ok) {
-        if (response.status === 401) {
-          await showDialog('alert', 'Incorrect password!', 'Error');
-        } else {
-          throw new Error('Delete failed');
-        }
+      if (response.status === 401) {
+        await showDialog('alert', 'Session expired. Please login again.', 'Session Expired');
+        onLogout();
         return;
       }
 
+      if (response.status === 403) {
+        await showDialog('alert', 'Only admins can delete forms.', 'Access Denied');
+        return;
+      }
+
+      if (!response.ok) throw new Error('Delete failed');
+
       await showDialog('alert', 'Form deleted successfully!', 'Success');
-      // Reset form to blank state
       setEventData({ projectNo: '', name: '', venue: '', periode: '', periodeStart: '', periodeEnd: '', note: '' });
       setItems([{ id: generateId(), name: 'NEW SECTION', subs: [] }]);
       setCurrentFormId(null);
       setParentFormId(null);
-
+      setIsReadOnly(false);
     } catch (error) {
       console.error(error);
       await showDialog('alert', 'Failed to delete form', 'Error');
@@ -272,7 +295,13 @@ function App() {
 
   const fetchForms = async (query = '', typeFilter = activeTab) => {
     try {
-      const res = await fetch(`http://localhost:3001/api/forms?query=${encodeURIComponent(query)}&type=${typeFilter}`);
+      const res = await fetch(`${API}/api/forms?query=${encodeURIComponent(query)}&type=${typeFilter}`, {
+        headers: authHeaders
+      });
+      if (res.status === 401) {
+        onLogout();
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         setFormList(data);
@@ -293,17 +322,24 @@ function App() {
 
   const handleLoadForm = async (id, isNewRealisasiTemplate = false) => {
     try {
-      const res = await fetch(`http://localhost:3001/api/forms/${id}`);
+      const res = await fetch(`${API}/api/forms/${id}`, {
+        headers: authHeaders
+      });
+      if (res.status === 401) {
+        onLogout();
+        return;
+      }
       if (res.ok) {
         let form = await res.json();
 
-        // If we are loading a budget to be the parent of a new realisasi:
         if (isNewRealisasiTemplate) {
           setParentFormId(form.id);
-          setCurrentFormId(null); // It's a brand new realisasi
+          setCurrentFormId(null);
+          setIsReadOnly(false); // creating new realisasi = editable
         } else {
           setCurrentFormId(form.id);
           setParentFormId(form.parent_id);
+          setIsReadOnly(form.readonly || false);
         }
 
         setEventData({
@@ -316,7 +352,6 @@ function App() {
           note: form.note || ''
         });
         if (form.data && Array.isArray(form.data)) {
-          // If we are cloning a budget for a new realisasi, ensure actualRate exists but is 0
           if (isNewRealisasiTemplate) {
             const cleanedData = form.data.map(m => ({
               ...m,
@@ -342,67 +377,43 @@ function App() {
       ? `${eventData.periodeStart} to ${eventData.periodeEnd}`
       : eventData.periode;
 
-    // Helper for formatting
     const acctFormat = '#,##0.00';
 
-    // Header
     wsData.push([`PROJECT NO.`, eventData.projectNo]);
     wsData.push([`EVENT`, eventData.name]);
     wsData.push([`VENUE`, eventData.venue]);
     wsData.push([`PERIODE`, displayPeriode]);
     wsData.push([]);
 
-    // Table Header
     const headerRow = ['DESCRIPTION', 'QTY', 'MDY', 'INTERNAL BUDGET', 'BUDGET'];
     if (activeTab === 'realisasi') headerRow.push('REALISASI');
     wsData.push(headerRow);
 
-    let currentRowIdx = 6; // Data starts at row 7 (1-indexed: 1-4 header, 5 blank, 6 table header)
+    let currentRowIdx = 6;
 
-    // To construct SUM formulas later
     const internalSubRows = [];
     const budgetSubRows = [];
     const realisasiSubRows = [];
 
-    // Items
     items.forEach(main => {
       const mainRow = [main.name, '', '', '', ''];
       if (activeTab === 'realisasi') mainRow.push('');
-      wsData.push(mainRow); // Main Title
+      wsData.push(mainRow);
       currentRowIdx++;
 
       main.subs.forEach(sub => {
-        currentRowIdx++; // Increment for each sub item row
+        currentRowIdx++;
         const rowNum = currentRowIdx;
 
-        // Formulas for totals
-        const internalFormula = `B${rowNum}*C${rowNum}*D${rowNum}`;
-        const budgetFormula = `B${rowNum}*C${rowNum}*E${rowNum}`;
         const realTot = sub.actualRate || 0;
 
         const subRow = [
           `   ${sub.name}`,
           { v: sub.qty, t: 'n' },
           { v: sub.mdy, t: 'n' },
-          { v: sub.internalRate, t: 'n', z: acctFormat }, // Internal Rate (Column D)
-          { v: sub.rate, t: 'n', z: acctFormat },         // Rate (Column E)
-          // We don't put the formula in the array yet, XLSX helper can take objects
+          { v: sub.internalRate, t: 'n', z: acctFormat },
+          { v: sub.rate, t: 'n', z: acctFormat },
         ];
-
-        // Replace indices 3/4 with the actual calculated columns if we want to show it there, wait no:
-        // Col A: Desc
-        // Col B: Qty
-        // Col C: Mdy
-        // Col D: Internal RATE (wait, existing code puts TOTAL here, let's fix that)
-
-        // Let's adjust to match existing export:
-        // Existing: A: Desc, B: Qty, C: MDY, D: Internal TOTAL, E: Budget TOTAL
-        // But we need the rate to calculate the total via formula!
-        // So let's add rate columns, or just use the values and put formulas in D & E.
-        // Actually, user just wants format and formulas for totals.
-        // Let's keep the columns but use formulas for D and E. Wait, where does the rate come from if it's not in a cell?
-        // We MUST put the rate in a cell for the formula `B*C*Rate` to work, OR we hardcode the rate into the formula like `B*C*500000`.
-        // Let's hardcode the rate into the formula since the columns don't exist.
 
         const internalF = `B${rowNum}*C${rowNum}*${sub.internalRate}`;
         const budgetF = `B${rowNum}*C${rowNum}*${sub.rate}`;
@@ -424,16 +435,14 @@ function App() {
     wsData.push([]);
     currentRowIdx++;
 
-    // Helper to generate sum formula
     const sumSub = (arr) => arr.length > 0 ? arr.join('+') : '0';
 
-    // Subtotals
     currentRowIdx++;
     const subtotalRow = currentRowIdx;
     const rowSubtotal = ['SUBTOTAL', '', ''];
-    rowSubtotal.push({ v: subtotalInternal, f: sumSub(internalSubRows), t: 'n', z: acctFormat }); // D
-    rowSubtotal.push({ v: subtotalBudget, f: sumSub(budgetSubRows), t: 'n', z: acctFormat }); // E
-    if (activeTab === 'realisasi') rowSubtotal.push({ v: subtotalRealisasi, f: sumSub(realisasiSubRows), t: 'n', z: acctFormat }); // F
+    rowSubtotal.push({ v: subtotalInternal, f: sumSub(internalSubRows), t: 'n', z: acctFormat });
+    rowSubtotal.push({ v: subtotalBudget, f: sumSub(budgetSubRows), t: 'n', z: acctFormat });
+    if (activeTab === 'realisasi') rowSubtotal.push({ v: subtotalRealisasi, f: sumSub(realisasiSubRows), t: 'n', z: acctFormat });
     wsData.push(rowSubtotal);
 
     currentRowIdx++;
@@ -473,35 +482,36 @@ function App() {
     wsData.push([]);
     currentRowIdx++;
 
-    currentRowIdx++; const submittedRow = currentRowIdx;
+    currentRowIdx++;
     wsData.push(['', '', '', 'Submitted Budget', { v: grandTotalBudget, f: `E${grandRow}`, t: 'n', z: acctFormat }]);
 
-    currentRowIdx++; const afterPpnRow = currentRowIdx;
+    currentRowIdx++;
+    const afterPpnRow = currentRowIdx;
     wsData.push(['', '', '', 'After PPN', { v: afterPpn, f: `E${totalRow}`, t: 'n', z: acctFormat }]);
 
-    currentRowIdx++; const afterPphRow = currentRowIdx;
+    currentRowIdx++;
+    const afterPphRow = currentRowIdx;
     wsData.push(['', '', '', 'After PPH', { v: afterPph, f: `E${afterPpnRow}-(E${totalRow}*0.02)`, t: 'n', z: acctFormat }]);
 
-    currentRowIdx++; const plRow = currentRowIdx;
+    currentRowIdx++;
     wsData.push(['', '', '', 'P/L (Budget)', { v: profitLoss, f: `E${afterPphRow}-D${grandRow}`, t: 'n', z: acctFormat }]);
 
     if (activeTab === 'realisasi') {
       wsData.push([]);
       currentRowIdx++;
 
-      currentRowIdx++; const actualRow = currentRowIdx;
+      currentRowIdx++;
+      const actualRow = currentRowIdx;
       wsData.push(['', '', '', 'Actual Budget (Realisasi)', { v: grandTotalRealisasi, f: `F${grandRow}`, t: 'n', z: acctFormat }]);
 
-      currentRowIdx++; const plRealRow = currentRowIdx;
+      currentRowIdx++;
       wsData.push(['', '', '', 'P/L (Realisasi)', { v: profitLossRealisasi, f: `E${actualRow}-D${grandRow}`, t: 'n', z: acctFormat }]);
     }
 
     wsData.push([]);
 
-    // Notes section
     if (eventData.note) {
       wsData.push(['NOTES:']);
-      // split by newline to put each note line on a new excel row
       const noteLines = eventData.note.split('\n');
       noteLines.forEach(line => {
         wsData.push([line]);
@@ -510,7 +520,6 @@ function App() {
 
     const ws = XLSX.utils.aoa_to_sheet(wsData);
 
-    // Auto-size columns slightly
     const cols = [{ wch: 35 }, { wch: 10 }, { wch: 10 }, { wch: 20 }, { wch: 20 }];
     if (activeTab === 'realisasi') cols.push({ wch: 20 });
     ws['!cols'] = cols;
@@ -518,12 +527,46 @@ function App() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Budget");
 
-    // Use XLSX built-in browser download
     XLSX.writeFile(wb, "Budget_Form_Export.xlsx");
+  };
+
+  // Role badge helper
+  const roleBadge = (role) => {
+    const labels = { admin: 'Admin', manager: 'Manager', user: 'User' };
+    return <span className={`role-badge role-${role}`}>{labels[role] || role}</span>;
   };
 
   return (
     <div className="app-container">
+      {/* USER INFO BAR */}
+      <div className="user-bar">
+        <div className="user-bar-info">
+          <div className="user-avatar">{user.display_name?.charAt(0)?.toUpperCase() || 'U'}</div>
+          <div>
+            <span className="user-bar-name">{user.display_name}</span>
+            {roleBadge(user.role)}
+          </div>
+        </div>
+        <div className="user-bar-actions">
+          {isAdmin && (
+            <button className="btn btn-secondary btn-sm" onClick={() => setShowUserMgmt(true)}>
+              <Shield size={14} /> Users
+            </button>
+          )}
+          <button className="btn btn-secondary btn-sm" onClick={onLogout}>
+            <LogOut size={14} /> Logout
+          </button>
+        </div>
+      </div>
+
+      {/* READ-ONLY BANNER */}
+      {isReadOnly && (
+        <div className="readonly-banner">
+          <AlertTriangle size={16} />
+          <span>You are viewing this form in <strong>read-only</strong> mode. Only the form owner can edit.</span>
+        </div>
+      )}
+
       {/* APP TITLE & TABS */}
       <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
         <h1 style={{ fontWeight: '800', letterSpacing: '4px', color: 'var(--primary)', textTransform: 'uppercase', margin: 0 }}>
@@ -541,6 +584,7 @@ function App() {
                 setItems([{ id: generateId(), name: 'NEW SECTION', subs: [] }]);
                 setCurrentFormId(null);
                 setParentFormId(null);
+                setIsReadOnly(false);
               }
             }}>
             BUDGET
@@ -556,6 +600,7 @@ function App() {
                 setItems([{ id: generateId(), name: 'NEW SECTION', subs: [] }]);
                 setCurrentFormId(null);
                 setParentFormId(null);
+                setIsReadOnly(false);
                 setModalMode('new-realisasi');
                 setShowLoadModal(true);
                 fetchForms(searchTerm, 'budget');
@@ -574,21 +619,23 @@ function App() {
         <button className="btn btn-secondary btn-sm" onClick={openLoadModal}>
           <Search size={16} /> Load Form
         </button>
-        <button className="btn btn-secondary btn-sm" onClick={handleSaveForm}>
-          <Save size={16} /> Save Form
-        </button>
+        {canEdit && (
+          <button className="btn btn-secondary btn-sm" onClick={handleSaveForm}>
+            <Save size={16} /> Save Form
+          </button>
+        )}
         <button className="btn btn-success btn-sm" onClick={handleExportExcel}>
           <FileDown size={16} /> Export to XLS
         </button>
 
-        {/* Delete Button (Only if a form is currectly loaded) */}
-        {currentFormId && (
+        {/* Delete Button (Only admin and if a form is loaded) */}
+        {canDelete && currentFormId && (
           <button
             className="btn btn-sm"
             style={{
               background: '#ef4444',
               color: 'white',
-              marginLeft: 'auto', // push to the right
+              marginLeft: 'auto',
               display: 'flex',
               alignItems: 'center',
               gap: '0.5rem'
@@ -609,6 +656,7 @@ function App() {
             value={eventData.projectNo}
             onChange={(e) => setEventData({ ...eventData, projectNo: e.target.value })}
             placeholder="Project Number"
+            disabled={isReadOnly}
           />
         </div>
         <div className="input-group">
@@ -618,6 +666,7 @@ function App() {
             value={eventData.name}
             onChange={(e) => setEventData({ ...eventData, name: e.target.value })}
             placeholder="Event Name"
+            disabled={isReadOnly}
           />
         </div>
         <div className="input-group">
@@ -627,6 +676,7 @@ function App() {
             value={eventData.venue}
             onChange={(e) => setEventData({ ...eventData, venue: e.target.value })}
             placeholder="Event Venue"
+            disabled={isReadOnly}
           />
         </div>
         <div className="input-group">
@@ -637,6 +687,7 @@ function App() {
               style={{ flex: 1 }}
               value={eventData.periodeStart}
               onChange={(e) => setEventData({ ...eventData, periodeStart: e.target.value })}
+              disabled={isReadOnly}
             />
             <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>to</span>
             <input
@@ -644,6 +695,7 @@ function App() {
               style={{ flex: 1 }}
               value={eventData.periodeEnd}
               onChange={(e) => setEventData({ ...eventData, periodeEnd: e.target.value })}
+              disabled={isReadOnly}
             />
           </div>
           {eventData.periode && !eventData.periodeStart && !eventData.periodeEnd && (
@@ -680,6 +732,7 @@ function App() {
                       value={mainItem.name}
                       onChange={(e) => updateMainItemName(mainItem.id, e.target.value)}
                       style={{ fontWeight: 700 }}
+                      disabled={isReadOnly}
                     />
                   </td>
                   <td></td>
@@ -688,20 +741,23 @@ function App() {
                   <td></td>
                   {activeTab === 'realisasi' && <td></td>}
                   <td className="col-actions" style={{ display: 'flex', gap: '4px' }}>
-                    <button className="btn-icon btn-add-sub" title="Add Sub Item" onClick={() => addSubItem(mainItem.id)}>
-                      <PlusCircle size={18} />
-                    </button>
-                    <button className="btn-icon" title="Remove Main Item" onClick={() => removeMainItem(mainItem.id)}>
-                      <Trash2 size={18} />
-                    </button>
+                    {canEdit && (
+                      <>
+                        <button className="btn-icon btn-add-sub" title="Add Sub Item" onClick={() => addSubItem(mainItem.id)}>
+                          <PlusCircle size={18} />
+                        </button>
+                        <button className="btn-icon" title="Remove Main Item" onClick={() => removeMainItem(mainItem.id)}>
+                          <Trash2 size={18} />
+                        </button>
+                      </>
+                    )}
                   </td>
                 </tr>
 
                 {/* Sub Items Rows */}
-                {mainItem.subs.map((sub, index) => {
+                {mainItem.subs.map((sub) => {
                   const rowTotalInternal = sub.qty * sub.mdy * sub.internalRate;
                   const rowTotalBudget = sub.qty * sub.mdy * sub.rate;
-                  const rowTotalRealisasi = sub.actualRate || 0;
 
                   return (
                     <tr className="row-sub-item" key={sub.id}>
@@ -712,6 +768,7 @@ function App() {
                           value={sub.name}
                           onChange={(e) => updateSubItem(mainItem.id, sub.id, 'name', e.target.value)}
                           style={{ paddingLeft: '2rem' }}
+                          disabled={isReadOnly}
                         />
                       </td>
                       <td>
@@ -720,6 +777,7 @@ function App() {
                           className="cell-input align-center"
                           value={sub.qty}
                           onChange={(e) => updateSubItem(mainItem.id, sub.id, 'qty', parseFloat(e.target.value) || 0)}
+                          disabled={isReadOnly}
                         />
                       </td>
                       <td>
@@ -728,6 +786,7 @@ function App() {
                           className="cell-input align-center"
                           value={sub.mdy}
                           onChange={(e) => updateSubItem(mainItem.id, sub.id, 'mdy', parseFloat(e.target.value) || 0)}
+                          disabled={isReadOnly}
                         />
                       </td>
                       <td>
@@ -739,6 +798,7 @@ function App() {
                             onChange={(e) => updateSubItem(mainItem.id, sub.id, 'internalRate', parseCurrency(e.target.value))}
                             style={{ width: '45%' }}
                             placeholder="Rate"
+                            disabled={isReadOnly}
                           />
                           <div className="cell-readonly align-right" style={{ width: '50%' }}>
                             {formatCurrency(rowTotalInternal)}
@@ -754,6 +814,7 @@ function App() {
                             onChange={(e) => updateSubItem(mainItem.id, sub.id, 'rate', parseCurrency(e.target.value))}
                             style={{ width: '45%' }}
                             placeholder="Rate"
+                            disabled={isReadOnly}
                           />
                           <div className="cell-readonly align-right" style={{ width: '50%', fontWeight: 600 }}>
                             {formatCurrency(rowTotalBudget)}
@@ -769,13 +830,16 @@ function App() {
                             onChange={(e) => updateSubItem(mainItem.id, sub.id, 'actualRate', parseCurrency(e.target.value))}
                             style={{ width: '100%', color: 'var(--primary)', fontWeight: 600 }}
                             placeholder="Actual Total"
+                            disabled={isReadOnly}
                           />
                         </td>
                       )}
                       <td className="col-actions">
-                        <button className="btn-icon" title="Remove Sub Item" onClick={() => removeSubItem(mainItem.id, sub.id)}>
-                          <Trash2 size={18} />
-                        </button>
+                        {canEdit && (
+                          <button className="btn-icon" title="Remove Sub Item" onClick={() => removeSubItem(mainItem.id, sub.id)}>
+                            <Trash2 size={18} />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   )
@@ -787,13 +851,15 @@ function App() {
             <tr><td colSpan="6" style={{ height: '0.5rem' }}></td></tr>
 
             {/* Add Main Item Button (Moved above Subtotal) */}
-            <tr>
-              <td colSpan="6" style={{ padding: '0.5rem 1rem', borderBottom: 'none' }}>
-                <button className="btn btn-primary btn-sm" onClick={addMainItem}>
-                  <Plus size={16} /> Add Main Item
-                </button>
-              </td>
-            </tr>
+            {canEdit && (
+              <tr>
+                <td colSpan="6" style={{ padding: '0.5rem 1rem', borderBottom: 'none' }}>
+                  <button className="btn btn-primary btn-sm" onClick={addMainItem}>
+                    <Plus size={16} /> Add Main Item
+                  </button>
+                </td>
+              </tr>
+            )}
 
             {/* SUMMARY ROWS */}
             <tr className="summary-row highlight">
@@ -843,13 +909,14 @@ function App() {
             value={eventData.note}
             onChange={(e) => setEventData({ ...eventData, note: e.target.value })}
             placeholder="Add any additional notes or terms here..."
+            disabled={isReadOnly}
             style={{
               width: '100%',
               minHeight: '150px',
               padding: '1rem',
               borderRadius: '12px',
               border: '1px solid var(--border)',
-              background: 'var(--surface)',
+              background: isReadOnly ? 'var(--bg-color)' : 'var(--surface)',
               fontFamily: 'inherit',
               fontSize: '0.95rem',
               resize: 'vertical',
@@ -988,6 +1055,14 @@ function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* USER MANAGEMENT MODAL */}
+      {showUserMgmt && (
+        <UserManagement
+          token={token}
+          onClose={() => setShowUserMgmt(false)}
+        />
       )}
 
     </div>
