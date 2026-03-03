@@ -31,7 +31,8 @@ function App({ user, token, onLogout }) {
     periode: '',
     periodeStart: '',
     periodeEnd: '',
-    note: ''
+    note: '',
+    creatorName: user.display_name
   });
 
   const [items, setItems] = useState([
@@ -191,7 +192,7 @@ function App({ user, token, onLogout }) {
     } else {
       const confirmed = await showDialog('confirm', 'Are you sure you want to start a new form? Unsaved changes will be lost.', 'Confirm New Form');
       if (confirmed) {
-        setEventData({ projectNo: '', name: '', venue: '', periode: '', periodeStart: '', periodeEnd: '', note: '' });
+        setEventData({ projectNo: '', name: '', venue: '', periode: '', periodeStart: '', periodeEnd: '', note: '', creatorName: user.display_name });
         setItems([{ id: generateId(), name: 'NEW SECTION', subs: [] }]);
         setCurrentFormId(null);
         setParentFormId(null);
@@ -282,7 +283,7 @@ function App({ user, token, onLogout }) {
       if (!response.ok) throw new Error('Delete failed');
 
       await showDialog('alert', 'Form deleted successfully!', 'Success');
-      setEventData({ projectNo: '', name: '', venue: '', periode: '', periodeStart: '', periodeEnd: '', note: '' });
+      setEventData({ projectNo: '', name: '', venue: '', periode: '', periodeStart: '', periodeEnd: '', note: '', creatorName: user.display_name });
       setItems([{ id: generateId(), name: 'NEW SECTION', subs: [] }]);
       setCurrentFormId(null);
       setParentFormId(null);
@@ -349,7 +350,8 @@ function App({ user, token, onLogout }) {
           periode: form.periode || '',
           periodeStart: form.periode_start || '',
           periodeEnd: form.periode_end || '',
-          note: form.note || ''
+          note: form.note || '',
+          creatorName: isNewRealisasiTemplate ? user.display_name : (form.creator_name || 'Unknown User')
         });
         if (form.data && Array.isArray(form.data)) {
           if (isNewRealisasiTemplate) {
@@ -580,7 +582,7 @@ function App({ user, token, onLogout }) {
               const confirmed = await showDialog('confirm', "Switching tabs will discard unsaved changes. Switch?", "Confirm Switch");
               if (confirmed) {
                 setActiveTab('budget');
-                setEventData({ projectNo: '', name: '', venue: '', periode: '', periodeStart: '', periodeEnd: '', note: '' });
+                setEventData({ projectNo: '', name: '', venue: '', periode: '', periodeStart: '', periodeEnd: '', note: '', creatorName: user.display_name });
                 setItems([{ id: generateId(), name: 'NEW SECTION', subs: [] }]);
                 setCurrentFormId(null);
                 setParentFormId(null);
@@ -596,7 +598,7 @@ function App({ user, token, onLogout }) {
               const confirmed = await showDialog('confirm', "Switching tabs will discard unsaved changes. Switch?", "Confirm Switch");
               if (confirmed) {
                 setActiveTab('realisasi');
-                setEventData({ projectNo: '', name: '', venue: '', periode: '', periodeStart: '', periodeEnd: '', note: '' });
+                setEventData({ projectNo: '', name: '', venue: '', periode: '', periodeStart: '', periodeEnd: '', note: '', creatorName: user.display_name });
                 setItems([{ id: generateId(), name: 'NEW SECTION', subs: [] }]);
                 setCurrentFormId(null);
                 setParentFormId(null);
@@ -647,8 +649,14 @@ function App({ user, token, onLogout }) {
         )}
       </div>
 
+      <div style={{ padding: '0 1rem', display: 'flex', justifyContent: 'flex-end' }}>
+        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', background: 'var(--surface)', padding: '4px 12px', borderRadius: '12px', border: '1px solid var(--border)' }}>
+          Form Owner: <strong style={{ color: 'var(--text-main)' }}>{eventData.creatorName}</strong>
+        </span>
+      </div>
+
       {/* HEADER SECTION */}
-      <div className="document-header">
+      <div className="document-header" style={{ marginTop: '0.5rem' }}>
         <div className="input-group">
           <label>Project No</label>
           <input
@@ -998,7 +1006,7 @@ function App({ user, token, onLogout }) {
                     <div key={form.id} className="form-item" onClick={() => handleLoadForm(form.id, modalMode === 'new-realisasi')}>
                       <div className="form-item-info">
                         <span className="form-item-title">{form.project_no ? `[${form.project_no}] ` : ''}{form.event || 'Untitled Event'}</span>
-                        <span className="form-item-date">{form.venue} | {form.periode_start && form.periode_end ? `${form.periode_start} to ${form.periode_end}` : form.periode}</span>
+                        <span className="form-item-date">{form.venue} | {form.periode_start && form.periode_end ? `${form.periode_start} to ${form.periode_end}` : form.periode} | Created by: {form.creator_name || 'Unknown User'}</span>
                       </div>
                     </div>
                   ))

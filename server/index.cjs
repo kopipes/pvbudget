@@ -46,17 +46,17 @@ app.get('/api/forms', (req, res) => {
     getVisibleUserIds(req.user, (err, visibleIds) => {
         if (err) return res.status(500).json({ error: err.message });
 
-        let sql = 'SELECT id, form_type, parent_id, project_no, event, venue, periode, periode_start, periode_end, note, created_by, updated_at FROM forms';
+        let sql = 'SELECT f.id, f.form_type, f.parent_id, f.project_no, f.event, f.venue, f.periode, f.periode_start, f.periode_end, f.note, f.created_by, f.updated_at, u.display_name as creator_name FROM forms f LEFT JOIN users u ON f.created_by = u.id';
         let conditions = [];
         let params = [];
 
         if (type) {
-            conditions.push('form_type = ?');
+            conditions.push('f.form_type = ?');
             params.push(type);
         }
 
         if (query) {
-            conditions.push('(event LIKE ? OR venue LIKE ? OR periode LIKE ? OR project_no LIKE ?)');
+            conditions.push('(f.event LIKE ? OR f.venue LIKE ? OR f.periode LIKE ? OR f.project_no LIKE ?)');
             const wildcardQuery = `%${query}%`;
             params.push(wildcardQuery, wildcardQuery, wildcardQuery, wildcardQuery);
         }
@@ -64,7 +64,7 @@ app.get('/api/forms', (req, res) => {
         // Role-based filtering
         if (visibleIds !== null) {
             const placeholders = visibleIds.map(() => '?').join(',');
-            conditions.push(`(created_by IN (${placeholders}) OR created_by IS NULL)`);
+            conditions.push(`(f.created_by IN (${placeholders}) OR f.created_by IS NULL)`);
             params.push(...visibleIds);
         }
 
@@ -72,7 +72,7 @@ app.get('/api/forms', (req, res) => {
             sql += ' WHERE ' + conditions.join(' AND ');
         }
 
-        sql += ' ORDER BY updated_at DESC';
+        sql += ' ORDER BY f.updated_at DESC';
 
         db.all(sql, params, (err, rows) => {
             if (err) {
@@ -86,7 +86,7 @@ app.get('/api/forms', (req, res) => {
 // 2. GET /api/forms/:id (Load Data — with permission check)
 app.get('/api/forms/:id', (req, res) => {
     const { id } = req.params;
-    db.get('SELECT * FROM forms WHERE id = ?', [id], (err, row) => {
+    db.get('SELECT f.*, u.display_name as creator_name FROM forms f LEFT JOIN users u ON f.created_by = u.id WHERE f.id = ?', [id], (err, row) => {
         if (err) {
             return res.status(500).json({ error: err.message });
         }
