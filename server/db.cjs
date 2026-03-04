@@ -55,6 +55,11 @@ const db = new sqlite3.Database(dbPath, (err) => {
             // Ignore error if column already exists
         });
 
+        // Add management_fee_pct column to forms if it doesn't exist
+        db.run(`ALTER TABLE forms ADD COLUMN management_fee_pct REAL DEFAULT 10`, (err) => {
+            // Ignore error if column already exists
+        });
+
         // Seed default admin user if no users exist
         db.get('SELECT COUNT(*) as count FROM users', (err, row) => {
             if (err) {

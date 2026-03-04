@@ -31,6 +31,7 @@ function App({ user, token, onLogout }) {
     periode: '',
     periodeStart: '',
     periodeEnd: '',
+    managementFeePercent: 10,
     note: '',
     creatorName: user.display_name
   });
@@ -164,7 +165,8 @@ function App({ user, token, onLogout }) {
     });
   });
 
-  const managementFee = subtotalBudget * 0.10;
+  const mgmtPct = parseFloat(eventData.managementFeePercent) || 0;
+  const managementFee = subtotalBudget * (mgmtPct / 100);
   const totalInternal = subtotalInternal;
   const totalBudget = subtotalBudget + managementFee;
 
@@ -192,7 +194,7 @@ function App({ user, token, onLogout }) {
     } else {
       const confirmed = await showDialog('confirm', 'Are you sure you want to start a new form? Unsaved changes will be lost.', 'Confirm New Form');
       if (confirmed) {
-        setEventData({ projectNo: '', name: '', venue: '', periode: '', periodeStart: '', periodeEnd: '', note: '', creatorName: user.display_name });
+        setEventData({ projectNo: '', name: '', venue: '', periode: '', periodeStart: '', periodeEnd: '', managementFeePercent: 10, note: '', creatorName: user.display_name });
         setItems([{ id: generateId(), name: 'NEW SECTION', subs: [] }]);
         setCurrentFormId(null);
         setParentFormId(null);
@@ -214,6 +216,7 @@ function App({ user, token, onLogout }) {
         periode: eventData.periode,
         periode_start: eventData.periodeStart,
         periode_end: eventData.periodeEnd,
+        management_fee_pct: eventData.managementFeePercent,
         note: eventData.note,
         data: items
       };
@@ -283,7 +286,7 @@ function App({ user, token, onLogout }) {
       if (!response.ok) throw new Error('Delete failed');
 
       await showDialog('alert', 'Form deleted successfully!', 'Success');
-      setEventData({ projectNo: '', name: '', venue: '', periode: '', periodeStart: '', periodeEnd: '', note: '', creatorName: user.display_name });
+      setEventData({ projectNo: '', name: '', venue: '', periode: '', periodeStart: '', periodeEnd: '', managementFeePercent: 10, note: '', creatorName: user.display_name });
       setItems([{ id: generateId(), name: 'NEW SECTION', subs: [] }]);
       setCurrentFormId(null);
       setParentFormId(null);
@@ -350,6 +353,7 @@ function App({ user, token, onLogout }) {
           periode: form.periode || '',
           periodeStart: form.periode_start || '',
           periodeEnd: form.periode_end || '',
+          managementFeePercent: form.management_fee_pct != null ? form.management_fee_pct : 10,
           note: form.note || '',
           creatorName: isNewRealisasiTemplate ? user.display_name : (form.creator_name || 'Unknown User')
         });
@@ -385,13 +389,14 @@ function App({ user, token, onLogout }) {
     wsData.push([`EVENT`, eventData.name]);
     wsData.push([`VENUE`, eventData.venue]);
     wsData.push([`PERIODE`, displayPeriode]);
+    wsData.push([`MANAGEMENT FEE`, `${mgmtPct}%`]);
     wsData.push([]);
 
     const headerRow = ['DESCRIPTION', 'QTY', 'MDY', 'INTERNAL BUDGET', 'BUDGET'];
     if (activeTab === 'realisasi') headerRow.push('REALISASI');
     wsData.push(headerRow);
 
-    let currentRowIdx = 6;
+    let currentRowIdx = 7;
 
     const internalSubRows = [];
     const budgetSubRows = [];
@@ -449,9 +454,9 @@ function App({ user, token, onLogout }) {
 
     currentRowIdx++;
     const mgmtRow = currentRowIdx;
-    const rowMgmt = ['MANAGEMENT FEE (10%)', '', ''];
+    const rowMgmt = [`MANAGEMENT FEE (${mgmtPct}%)`, '', ''];
     rowMgmt.push('');
-    rowMgmt.push({ v: managementFee, f: `E${subtotalRow}*0.1`, t: 'n', z: acctFormat });
+    rowMgmt.push({ v: managementFee, f: `E${subtotalRow}*${mgmtPct / 100}`, t: 'n', z: acctFormat });
     if (activeTab === 'realisasi') rowMgmt.push('');
     wsData.push(rowMgmt);
 
@@ -582,7 +587,7 @@ function App({ user, token, onLogout }) {
               const confirmed = await showDialog('confirm', "Switching tabs will discard unsaved changes. Switch?", "Confirm Switch");
               if (confirmed) {
                 setActiveTab('budget');
-                setEventData({ projectNo: '', name: '', venue: '', periode: '', periodeStart: '', periodeEnd: '', note: '', creatorName: user.display_name });
+                setEventData({ projectNo: '', name: '', venue: '', periode: '', periodeStart: '', periodeEnd: '', managementFeePercent: 10, note: '', creatorName: user.display_name });
                 setItems([{ id: generateId(), name: 'NEW SECTION', subs: [] }]);
                 setCurrentFormId(null);
                 setParentFormId(null);
@@ -598,7 +603,7 @@ function App({ user, token, onLogout }) {
               const confirmed = await showDialog('confirm', "Switching tabs will discard unsaved changes. Switch?", "Confirm Switch");
               if (confirmed) {
                 setActiveTab('realisasi');
-                setEventData({ projectNo: '', name: '', venue: '', periode: '', periodeStart: '', periodeEnd: '', note: '', creatorName: user.display_name });
+                setEventData({ projectNo: '', name: '', venue: '', periode: '', periodeStart: '', periodeEnd: '', managementFeePercent: 10, note: '', creatorName: user.display_name });
                 setItems([{ id: generateId(), name: 'NEW SECTION', subs: [] }]);
                 setCurrentFormId(null);
                 setParentFormId(null);
@@ -711,6 +716,20 @@ function App({ user, token, onLogout }) {
               Legacy text: {eventData.periode}
             </div>
           )}
+        </div>
+        <div className="input-group">
+          <label>Management Fee (%)</label>
+          <input
+            type="number"
+            min="0"
+            max="100"
+            step="0.5"
+            value={eventData.managementFeePercent}
+            onChange={(e) => setEventData({ ...eventData, managementFeePercent: parseFloat(e.target.value) || 0 })}
+            placeholder="10"
+            disabled={isReadOnly}
+            style={{ maxWidth: '120px' }}
+          />
         </div>
       </div>
 
@@ -878,7 +897,7 @@ function App({ user, token, onLogout }) {
               <td></td>
             </tr>
             <tr className="summary-row">
-              <td colSpan="3" className="align-right">MANAGEMENT FEE (10%)</td>
+              <td colSpan="3" className="align-right">{`MANAGEMENT FEE (${mgmtPct}%)`}</td>
               <td></td>
               <td>{formatCurrency(managementFee)}</td>
               {activeTab === 'realisasi' && <td></td>}

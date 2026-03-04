@@ -46,7 +46,7 @@ app.get('/api/forms', (req, res) => {
     getVisibleUserIds(req.user, (err, visibleIds) => {
         if (err) return res.status(500).json({ error: err.message });
 
-        let sql = 'SELECT f.id, f.form_type, f.parent_id, f.project_no, f.event, f.venue, f.periode, f.periode_start, f.periode_end, f.note, f.created_by, f.updated_at, u.display_name as creator_name FROM forms f LEFT JOIN users u ON f.created_by = u.id';
+        let sql = 'SELECT f.id, f.form_type, f.parent_id, f.project_no, f.event, f.venue, f.periode, f.periode_start, f.periode_end, f.management_fee_pct, f.note, f.created_by, f.updated_at, u.display_name as creator_name FROM forms f LEFT JOIN users u ON f.created_by = u.id';
         let conditions = [];
         let params = [];
 
@@ -133,10 +133,10 @@ app.get('/api/forms/:id', (req, res) => {
 
 // 3. POST /api/forms (Create new — sets created_by)
 app.post('/api/forms', (req, res) => {
-    const { form_type, parent_id, project_no, event, venue, periode, periode_start, periode_end, data, note } = req.body;
+    const { form_type, parent_id, project_no, event, venue, periode, periode_start, periode_end, management_fee_pct, data, note } = req.body;
 
-    const sql = `INSERT INTO forms (form_type, parent_id, project_no, event, venue, periode, periode_start, periode_end, data, note, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-    const params = [form_type || 'budget', parent_id || null, project_no, event, venue, periode, periode_start, periode_end, JSON.stringify(data), note, req.user.id];
+    const sql = `INSERT INTO forms (form_type, parent_id, project_no, event, venue, periode, periode_start, periode_end, management_fee_pct, data, note, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const params = [form_type || 'budget', parent_id || null, project_no, event, venue, periode, periode_start, periode_end, management_fee_pct != null ? management_fee_pct : 10, JSON.stringify(data), note, req.user.id];
 
     db.run(sql, params, function (err) {
         if (err) {
@@ -149,7 +149,7 @@ app.post('/api/forms', (req, res) => {
 // 4. PUT /api/forms/:id (Update existing — permission check)
 app.put('/api/forms/:id', (req, res) => {
     const { id } = req.params;
-    const { form_type, parent_id, project_no, event, venue, periode, periode_start, periode_end, data, note } = req.body;
+    const { form_type, parent_id, project_no, event, venue, periode, periode_start, periode_end, management_fee_pct, data, note } = req.body;
 
     // Check ownership first
     db.get('SELECT created_by FROM forms WHERE id = ?', [id], (err, row) => {
@@ -163,8 +163,8 @@ app.put('/api/forms/:id', (req, res) => {
             return res.status(403).json({ error: 'You can only edit your own forms' });
         }
 
-        const sql = `UPDATE forms SET form_type = ?, parent_id = ?, project_no = ?, event = ?, venue = ?, periode = ?, periode_start = ?, periode_end = ?, data = ?, note = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
-        const params = [form_type || 'budget', parent_id || null, project_no, event, venue, periode, periode_start, periode_end, JSON.stringify(data), note, id];
+        const sql = `UPDATE forms SET form_type = ?, parent_id = ?, project_no = ?, event = ?, venue = ?, periode = ?, periode_start = ?, periode_end = ?, management_fee_pct = ?, data = ?, note = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
+        const params = [form_type || 'budget', parent_id || null, project_no, event, venue, periode, periode_start, periode_end, management_fee_pct != null ? management_fee_pct : 10, JSON.stringify(data), note, id];
 
         db.run(sql, params, function (err) {
             if (err) {
