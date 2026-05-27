@@ -1,5 +1,5 @@
 import { useState, Fragment, useEffect } from 'react';
-import { Plus, Trash2, PlusCircle, Save, FileDown, FilePlus, Search, X, AlertTriangle, LogOut, Shield, Building2, Send, Check, RefreshCw, Clock, CheckCircle, XCircle, History, Eye, LayoutDashboard } from 'lucide-react';
+import { Plus, Trash2, PlusCircle, Save, FileDown, FilePlus, Search, X, AlertTriangle, LogOut, Shield, Building2, Send, Check, RefreshCw, Clock, CheckCircle, XCircle, History, Eye, LayoutDashboard, Receipt } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import UserManagement from './UserManagement.jsx';
 import DivisionManagement from './DivisionManagement.jsx';
@@ -73,6 +73,7 @@ function App({ user, token, onLogout }) {
     const [divisions, setDivisions] = useState([]);
     const [approvalHistory, setApprovalHistory] = useState([]);
     const [isReadOnly, setIsReadOnly] = useState(false);
+    const [sourceBudget, setSourceBudget] = useState(null);
 
     const authHeaders = {
         'Content-Type': 'application/json',
@@ -199,6 +200,30 @@ function App({ user, token, onLogout }) {
         setLoadedForm(null);
         setApprovalHistory([]);
         setOpenedFormId(null);
+        setSourceBudget(null);
+    };
+
+    // Handle creating a realization form from an approved budget
+    const handleCreateRealization = async () => {
+        if (!currentFormId || currentStatus !== STATUS.APPROVED) return;
+        const confirmed = await showDialog('confirm', 'Create a new Realization form based on this approved budget? You can then fill in actual spending.', 'Create Realization');
+        if (!confirmed) return;
+
+        try {
+            const res = await fetch(`${API}/api/forms/${currentFormId}/create-realization`, { method: 'POST', headers: authHeaders });
+            const data = await res.json();
+            if (!res.ok) {
+                if (data.existing_id) {
+                    await showDialog('alert', data.error, 'Realization Exists');
+                    return;
+                }
+                await showDialog('alert', data.error || 'Failed to create realization', 'Error');
+                return;
+            }
+            await showDialog('alert', 'Realization form created! You can now edit the actual spending.', 'Success');
+            // Load the new realization form
+            loadForm(data.id);
+        } catch (e) { await showDialog('alert', 'Failed to create realization', 'Error'); }
     };
 
     // Partial reset — keeps items as template for duplication
@@ -664,6 +689,12 @@ function App({ user, token, onLogout }) {
                 {isAdmin && currentStatus === STATUS.APPROVED && currentFormId && (
                     <button className="btn btn-sm" style={{ background: '#8b5cf6', color: '#fff' }} onClick={handleUnlockForm}>
                         <RefreshCw size={16} /> Unlock for Revision
+                    </button>
+                )}
+                {/* Create Realization button - only for approved budget forms */}
+                {currentStatus === STATUS.APPROVED && loadedForm?.form_type === 'budget' && !isCorporate && (
+                    <button className="btn btn-sm" style={{ background: '#f59e0b', color: '#fff' }} onClick={handleCreateRealization}>
+                        <Receipt size={16} /> Create Realization
                     </button>
                 )}
                 <button className="btn btn-success btn-sm" onClick={handleExportExcel}><FileDown size={16} /> Export XLS</button>

@@ -433,7 +433,7 @@ app.get('/api/forms/:id/approval-history', (req, res) => {
     );
 });
 
-// 14. PUT /api/forms/:id/approve (Admin unlocks an approved form back to draft for re-submission)
+// 14. PUT /api/forms/:id/unlock (Admin unlocks an approved form back to draft for re-submission)
 app.put('/api/forms/:id/unlock', (req, res) => {
     if (req.user.role !== 'admin') {
         return res.status(403).json({ error: 'Only Admin can unlock approved forms' });
@@ -458,6 +458,73 @@ app.put('/api/forms/:id/unlock', (req, res) => {
                 res.json({ id, message: 'Approved form unlocked back to revision. Please submit again.' });
             }
         );
+    });
+});
+
+// 15. POST /api/forms/:id/create-realization (Create realization form from approved budget)
+app.post('/api/forms/:id/create-realization', (req, res) => {
+    if (req.user.role === 'corporate') {
+        return res.status(403).json({ error: 'Corporate users cannot create realization forms' });
+    }
+
+    const { id } = req.params;
+
+    db.get('SELECT * FROM forms WHERE id = ?', [id], (err, form) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!form) return res.status(404).json({ error: 'Form not found' });
+
+        // Only allow creating realization from approved budget forms
+        if (form.form_type !== 'budget') {
+            return res.status(400).json({ error: 'Only budget forms can be converted to realization' });
+        }
+        if (form.status !== STATUS.APPROVED) {
+            return res.status(400).json({ error: 'Only approved budget forms can be converted to realization' });
+        }
+
+        // Check if realization already exists for this budget
+        db.get('SELECT id FROM forms WHERE source_budget_id = ?', [id], (err, existing) => {
+            if (err) return res.status(500).json({ error: err.message });
+            if (existing) {
+                return res.status(400).json({ 
+                    error: 'Realization form already exists for this budget', 
+                    existing_id: existing.id 
+                });
+            }
+
+            // Create realization form with copied data
+            // Reset actualRate in each sub item to 0
+            let data = [];
+            try {
+                data = JSON.parse(form.data);
+                data = data.map(main => ({
+                    ...main,
+                    subs: main.subs.map(sub => ({ ...sub, actualRate: 0 }))
+                }));
+            } catch (e) {}
+
+            const sql = `INSERT INTO forms (form_type, project_no, event, venue, periode, periode_start, periode_end, management_fee_pct, data, note, status, version_number, source_budget_id, created_by, division_id)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`;
+            const params = [
+                'realization',
+                form.project_no, form.event, form.venue, form.periode, form.periode_start, form.periode_end,
+                form.management_fee_pct,
+                JSON.stringify(data),
+                form.note || '',
+                STATUS.DRAFT,
+                id, // source_budget_id
+                req.user.id,
+                form.division_id
+            ];
+
+            db.run(sql, params, function (err) {
+                if (err) return res.status(500).json({ error: err.message });
+                res.status(201).json({ 
+                    id: this.lastID, 
+                    message: 'Realization form created successfully',
+                    source_budget_id: id
+                });
+            });
+        });
     });
 });
 
