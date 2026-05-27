@@ -77,6 +77,7 @@ function App({ user, token, onLogout }) {
     const [hasRealization, setHasRealization] = useState(false);
     const [isRealizationForm, setIsRealizationForm] = useState(false);
     const [realizationFormId, setRealizationFormId] = useState(null);
+    const [budgetMgmtFeePct, setBudgetMgmtFeePct] = useState(10);
 
     const authHeaders = {
         'Content-Type': 'application/json',
@@ -396,14 +397,17 @@ function App({ user, token, onLogout }) {
                 setCurrentStatus(form.status);
                 setCurrentVersion(form.version_number || 1);
                 setIsReadOnly(form.readonly || false);
+                const mgmtFee = form.management_fee_pct != null ? form.management_fee_pct : 10;
                 setEventData({
                     projectNo: form.project_no || '', name: form.event || '', venue: form.venue || '',
                     periode: form.periode || '', periodeStart: form.periode_start || '', periodeEnd: form.periode_end || '',
-                    managementFeePercent: form.management_fee_pct != null ? form.management_fee_pct : 10,
+                    managementFeePercent: mgmtFee,
                     note: form.note || '', creatorName: form.creator_name || 'Unknown',
                     revisionNote: form.revision_note || '',
                     divisionId: form.division_id || ''
                 });
+                // Store budget's management fee for REALISASI tab calculations
+                setBudgetMgmtFeePct(mgmtFee);
                 setSelectedDivisionId(form.division_id || '');
                 if (form.data && Array.isArray(form.data)) setItems(form.data);
                 setShowLoadModal(false);
@@ -456,14 +460,17 @@ function App({ user, token, onLogout }) {
                             if (realizationForm.data && Array.isArray(realizationForm.data)) {
                                 setItems(realizationForm.data);
                             }
+                            // Use budget's management fee percentage (stored in budgetMgmtFeePct)
+                            setEventData(prev => ({ ...prev, managementFeePercent: budgetMgmtFeePct }));
                         }
                     }
                 }
             } catch (e) { console.error('Failed to load realization data', e); }
-        } else if (tab === 'budget' && currentFormId && loadedForm) {
+        } else if (tab === 'budget') {
             // Reload budget data
-            if (loadedForm.data && Array.isArray(loadedForm.data)) {
+            if (loadedForm && loadedForm.data && Array.isArray(loadedForm.data)) {
                 setItems(loadedForm.data);
+                setEventData(prev => ({ ...prev, managementFeePercent: loadedForm.management_fee_pct != null ? loadedForm.management_fee_pct : 10 }));
             }
         }
     };
