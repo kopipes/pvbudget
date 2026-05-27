@@ -75,6 +75,7 @@ function App({ user, token, onLogout }) {
     const [isReadOnly, setIsReadOnly] = useState(false);
     const [sourceBudget, setSourceBudget] = useState(null);
     const [hasRealization, setHasRealization] = useState(false);
+    const [isRealizationForm, setIsRealizationForm] = useState(false);
 
     const authHeaders = {
         'Content-Type': 'application/json',
@@ -419,6 +420,14 @@ function App({ user, token, onLogout }) {
                 } else {
                     setHasRealization(false);
                 }
+
+                // Set isRealizationForm flag and switch to realize tab
+                setIsRealizationForm(form.form_type === 'realization');
+                if (form.form_type === 'realization') {
+                    setActiveTab('realisasi');
+                } else {
+                    setActiveTab('budget');
+                }
             }
         } catch (e) { await showDialog('alert', 'Failed to load form', 'Error'); }
     };
@@ -643,12 +652,13 @@ function App({ user, token, onLogout }) {
             {/* APP TITLE & TABS */}
             <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
                 <h1 style={{ fontWeight: '800', letterSpacing: '4px', color: 'var(--primary)', textTransform: 'uppercase', margin: 0 }}>
-                    {activeTab === 'budget' ? 'BUDGET' : 'REALISASI'}
+                    {currentFormId && loadedForm?.form_type === 'realization' ? 'REALISASI' : 'BUDGET'}
                 </h1>
-                <div style={{ display: 'inline-flex', marginTop: '1rem', background: 'var(--surface)', borderRadius: '8px', padding: '4px', boxShadow: 'var(--shadow-sm)' }}>
-                    <button className={`btn btn-sm ${activeTab === 'budget' ? 'btn-primary' : 'btn-secondary'}`} style={{ border: 'none', boxShadow: 'none' }} onClick={() => setActiveTab('budget')}>BUDGET</button>
-                    <button className={`btn btn-sm ${activeTab === 'realisasi' ? 'btn-primary' : 'btn-secondary'}`} style={{ border: 'none', boxShadow: 'none' }} onClick={() => setActiveTab('realisasi')}>REALISASI</button>
-                </div>
+                {currentFormId && loadedForm?.form_type === 'realization' && (
+                    <div style={{ display: 'inline-flex', marginTop: '1rem', background: 'var(--surface)', borderRadius: '8px', padding: '4px', boxShadow: 'var(--shadow-sm)' }}>
+                        <button className="btn btn-sm btn-primary" style={{ border: 'none', boxShadow: 'none' }}>REALISASI</button>
+                    </div>
+                )}
             </div>
 
             {/* TOP ACTION BAR */}
