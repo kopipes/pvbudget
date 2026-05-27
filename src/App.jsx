@@ -76,6 +76,7 @@ function App({ user, token, onLogout }) {
     const [sourceBudget, setSourceBudget] = useState(null);
     const [hasRealization, setHasRealization] = useState(false);
     const [isRealizationForm, setIsRealizationForm] = useState(false);
+    const [realizationFormId, setRealizationFormId] = useState(null);
 
     const authHeaders = {
         'Content-Type': 'application/json',
@@ -447,6 +448,7 @@ function App({ user, token, onLogout }) {
                 if (realCheck.ok) {
                     const realizations = await realCheck.json();
                     if (realizations.length > 0) {
+                        setRealizationFormId(realizations[0].id);
                         const realizationRes = await fetch(`${API}/api/forms/${realizations[0].id}`, { headers: authHeaders });
                         if (realizationRes.ok) {
                             const realizationForm = await realizationRes.json();
@@ -462,6 +464,23 @@ function App({ user, token, onLogout }) {
             if (loadedForm.data && Array.isArray(loadedForm.data)) {
                 setItems(loadedForm.data);
             }
+        }
+    };
+
+    // Save realization data to the linked realization form
+    const handleSaveRealisasi = async () => {
+        if (!realizationFormId) {
+            await showDialog('alert', 'No realization form linked to this budget.', 'Error');
+            return;
+        }
+        try {
+            const dataToSave = { data: items };
+            const response = await fetch(`${API}/api/forms/${realizationFormId}`, { method: 'PUT', headers: authHeaders, body: JSON.stringify(dataToSave) });
+            if (!response.ok) throw new Error('Save failed');
+            await showDialog('alert', 'Realisasi data saved successfully!', 'Success');
+        } catch (error) {
+            console.error(error);
+            await showDialog('alert', 'Failed to save realization data', 'Error');
         }
     };
 
@@ -751,6 +770,12 @@ function App({ user, token, onLogout }) {
                 {currentStatus === STATUS.APPROVED && !hasRealization && (!loadedForm?.form_type || loadedForm?.form_type === 'budget') && !isCorporate && (
                     <button className="btn btn-sm" style={{ background: '#f59e0b', color: '#fff' }} onClick={handleCreateRealization}>
                         <Receipt size={16} /> Create Realization
+                    </button>
+                )}
+                {/* Save Realisasi button - only when on REALISASI tab and has realization form */}
+                {activeTab === 'realisasi' && canEditRealisasi && realizationFormId && (
+                    <button className="btn btn-sm" style={{ background: '#f59e0b', color: '#fff' }} onClick={handleSaveRealisasi}>
+                        <Save size={16} /> Simpan Realisasi
                     </button>
                 )}
                 <button className="btn btn-success btn-sm" onClick={handleExportExcel}><FileDown size={16} /> Export XLS</button>
