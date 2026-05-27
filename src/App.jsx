@@ -197,6 +197,27 @@ function App({ user, token, onLogout }) {
         setIsReadOnly(false);
         setSelectedDivisionId(user.division_id || '');
         setLoadedForm(null);
+        setApprovalHistory([]);
+        setOpenedFormId(null);
+    };
+
+    // Partial reset — keeps items as template for duplication
+    const duplicateFromForm = (form) => {
+        setEventData({
+            projectNo: '', name: '', venue: '',
+            periode: form.periode || '', periodeStart: '', periodeEnd: '',
+            managementFeePercent: form.management_fee_pct != null ? form.management_fee_pct : 10,
+            note: '', creatorName: user.display_name, divisionId: user.division_id || ''
+        });
+        setSelectedDivisionId(user.division_id || '');
+        setItems(form.data && Array.isArray(form.data) ? JSON.parse(JSON.stringify(form.data)) : [{ id: generateId(), name: 'NEW SECTION', subs: [] }]);
+        setCurrentFormId(null);
+        setCurrentStatus(STATUS.DRAFT);
+        setCurrentVersion(1);
+        setIsReadOnly(false);
+        setLoadedForm(null);
+        setApprovalHistory([]);
+        setOpenedFormId(null);
     };
 
     const handleSaveForm = async () => {
@@ -312,11 +333,11 @@ function App({ user, token, onLogout }) {
     };
 
     const openLoadModal = async () => {
-        const confirmed = await showDialog('confirm', 'Unsaved changes will be lost. Continue?', 'Load Form');
+        const confirmed = await showDialog('confirm', 'Unsaved form data will be lost. Continue?', 'Load Form');
         if (confirmed) { setModalMode('load'); setShowLoadModal(true); fetchForms(searchTerm, activeTab); }
     };
 
-    const loadForm = async (id) => {
+    const loadForm = async (id, asTemplate = false) => {
         // If id is null, just open a fresh form
         if (id === null || id === undefined) {
             resetFormState();
@@ -331,6 +352,13 @@ function App({ user, token, onLogout }) {
             if (res.status === 401) { onLogout(); return; }
             if (res.ok) {
                 const form = await res.json();
+
+                if (asTemplate) {
+                    duplicateFromForm(form);
+                    setShowDashboard(false);
+                    return;
+                }
+
                 setLoadedForm(form);
                 fetchApprovalHistory(form.id);
                 setCurrentFormId(form.id);
@@ -569,12 +597,14 @@ function App({ user, token, onLogout }) {
 
             {/* TOP ACTION BAR */}
             <div className="top-action-bar">
-                {!isCorporate && (
+                {currentStatus === STATUS.DRAFT && !isCorporate && (
                     <button className="btn btn-secondary btn-sm" onClick={handleNewForm}><FilePlus size={16} /> New Form</button>
                 )}
-                <button className="btn btn-secondary btn-sm" onClick={() => { setShowLoadModal(true); fetchForms('', activeTab); }}>
-                    <Search size={16} /> Load Form
-                </button>
+                {currentStatus === STATUS.DRAFT && (
+                    <button className="btn btn-secondary btn-sm" onClick={openLoadModal}>
+                        <Search size={16} /> Load / Use Template
+                    </button>
+                )}
                 {canEdit && (
                     <button className="btn btn-secondary btn-sm" onClick={handleSaveForm}><Save size={16} /> Save</button>
                 )}
@@ -586,53 +616,24 @@ function App({ user, token, onLogout }) {
                 {/* Corporate/Admin approval actions */}
                 {canApprove && currentStatus === STATUS.PENDING && currentFormId && (
                     <>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: 1 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                {form.approval_stage === 'pending_2nd' ? (
-                                    <span style={{ background: 'rgba(234,179,8,0.15)', color: '#CA8A04', border: '1px solid rgba(234,179,8,0.3)', padding: '3px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600 }}>
-                                        <CheckCircle size={11} style={{ display: 'inline', marginRight: 3 }} />Awaiting 2nd Approval
-                                    </span>
-                                ) : (
-                                    <span style={{ background: 'rgba(234,179,8,0.15)', color: '#CA8A04', border: '1px solid rgba(234,179,8,0.3)', padding: '3px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600 }}>
-                                        <Clock size={11} style={{ display: 'inline', marginRight: 3 }} />Awaiting 1st Approval
-                                    </span>
-                                )}
-                            </div>
-                            <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                <button className="btn btn-sm" style={{ background: 'var(--success)', color: '#fff' }} onClick={handleApproveForm}>
-                                    <Check size={16} /> {form.approval_stage === 'pending_2nd' ? 'Final Approve' : 'Approve (1st)'}
-                                </button>
-                                <button className="btn btn-sm" style={{ background: '#ef4444', color: '#fff' }} onClick={handleRejectForm}>
-                                    <X size={16} /> Reject / Revise
-                                </button>
-                            </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            {form.approval_stage === 'pending_2nd' ? (
+                                <span style={{ background: 'rgba(234,179,8,0.15)', color: '#CA8A04', border: '1px solid rgba(234,179,8,0.3)', padding: '3px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600 }}>
+                                    <CheckCircle size={11} style={{ display: 'inline', marginRight: 3 }} />Awaiting 2nd Approval
+                                </span>
+                            ) : (
+                                <span style={{ background: 'rgba(234,179,8,0.15)', color: '#CA8A04', border: '1px solid rgba(234,179,8,0.3)', padding: '3px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600 }}>
+                                    <Clock size={11} style={{ display: 'inline', marginRight: 3 }} />Awaiting 1st Approval
+                                </span>
+                            )}
                         </div>
+                        <button className="btn btn-sm" style={{ background: 'var(--success)', color: '#fff' }} onClick={handleApproveForm}>
+                            <Check size={16} /> {form.approval_stage === 'pending_2nd' ? 'Final Approve' : 'Approve (1st)'}
+                        </button>
+                        <button className="btn btn-sm" style={{ background: '#ef4444', color: '#fff' }} onClick={handleRejectForm}>
+                            <X size={16} /> Reject / Revise
+                        </button>
                     </>
-                )}
-                {/* Approval history timeline */}
-                {approvalHistory.length > 0 && (
-                    <div style={{ marginTop: '0.5rem', padding: '0.6rem', background: 'var(--surface)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Approval Log</div>
-                        {approvalHistory.map((h, i) => (
-                            <div key={i} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.4rem', alignItems: 'flex-start' }}>
-                                <div style={{ width: 8, height: 8, borderRadius: '50%', background: h.action === 'approve' ? 'var(--success)' : '#ef4444', flexShrink: 0, marginTop: 3 }} />
-                                <div style={{ flex: 1, fontSize: '0.8rem' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <span style={{ fontWeight: 500 }}>{h.actor_name}</span>
-                                        <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{h.created_at ? new Date(h.created_at).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' }) : ''}</span>
-                                    </div>
-                                    <div style={{ color: h.action === 'approve' ? '#16a34a' : '#ef4444', fontSize: '0.75rem', fontWeight: 500 }}>
-                                        {h.action === 'approve' ? (h.approval_stage === '1st' ? '1st Approval' : 'Final Approval') : 'Revision Requested'}
-                                    </div>
-                                    {h.note ? (
-                                        <div style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '0.15rem' }}>
-                                            "{h.note}"
-                                        </div>
-                                    ) : null}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
                 )}
                 {/* Admin unlock approved */}
                 {isAdmin && currentStatus === STATUS.APPROVED && currentFormId && (
@@ -675,6 +676,34 @@ function App({ user, token, onLogout }) {
                     </div>
                 )}
             </div>
+
+            {/* APPROVAL HISTORY TIMELINE */}
+            {approvalHistory.length > 0 && (
+                <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: 'var(--surface)', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Approval Log</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {approvalHistory.map((h, i) => (
+                            <div key={i} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                                <div style={{ width: 8, height: 8, borderRadius: '50%', background: h.action === 'approve' ? 'var(--success)' : '#ef4444', flexShrink: 0, marginTop: 4 }} />
+                                <div style={{ flex: 1, fontSize: '0.8rem' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ fontWeight: 600 }}>{h.actor_name}</span>
+                                        <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{h.created_at ? new Date(h.created_at).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' }) : ''}</span>
+                                    </div>
+                                    <div style={{ color: h.action === 'approve' ? '#16a34a' : '#ef4444', fontSize: '0.75rem', fontWeight: 600 }}>
+                                        {h.action === 'approve' ? (h.approval_stage === '1st' ? '1st Approval' : 'Final Approval') : 'Revision Requested'}
+                                    </div>
+                                    {h.note ? (
+                                        <div style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '0.15rem' }}>
+                                            "{h.note}"
+                                        </div>
+                                    ) : null}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* HEADER SECTION */}
             <div className="document-header" style={{ marginTop: '0.5rem' }}>
@@ -858,17 +887,21 @@ function App({ user, token, onLogout }) {
                                 <div style={{ padding: '1rem', textAlign: 'center', color: '#64748B' }}>No forms found.</div>
                             ) : (
                                 formList.map(form => (
-                                    <div key={form.id} className="form-item" onClick={() => loadForm(form.id)}>
-                                        <div className="form-item-info">
+                                    <div key={form.id} className="form-item">
+                                        <div className="form-item-info" onClick={() => loadForm(form.id)} style={{ cursor: 'pointer', flex: 1 }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                                 <span className="form-item-title">{form.project_no ? `[${form.project_no}] ` : ''}{form.event || 'Untitled Event'}</span>
                                                 {statusBadge(form.status)}
+                                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>(v{form.version_number || 1})</span>
                                             </div>
                                             <span className="form-item-date">
-                                                v{form.version_number || 1} • {form.venue} • {form.periode_start && form.periode_end ? `${form.periode_start} to ${form.periode_end}` : form.periode} • {form.creator_name || 'Unknown'}
+                                                {form.venue} • {form.periode_start && form.periode_end ? `${form.periode_start} to ${form.periode_end}` : form.periode} • {form.creator_name || 'Unknown'}
                                                 {form.division_name && ` • ${form.division_name}`}
                                             </span>
                                         </div>
+                                        <button className="btn btn-sm" style={{ background: 'var(--accent-light)', color: '#92400E', border: '1px solid rgba(250,204,21,0.3)', flexShrink: 0 }} onClick={(e) => { e.stopPropagation(); loadForm(form.id, true); }}>
+                                            Use as Template
+                                        </button>
                                     </div>
                                 ))
                             )}
