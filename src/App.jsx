@@ -432,27 +432,27 @@ function App({ user, token, onLogout }) {
         const sumSub = (arr) => arr.length > 0 ? arr.join('+') : '0';
         currentRowIdx++; const subtotalRow = currentRowIdx;
         let rowSubtotal = ['SUBTOTAL', '', ''];
-        rowSubtotal.push({ v: subtotalInternal, f: sumSub(internalSubRows), t: 'n', z: acctFormat });
-        rowSubtotal.push({ v: subtotalBudget, f: sumSub(budgetSubRows), t: 'n', z: acctFormat });
-        if (activeTab === 'realisasi') rowSubtotal.push({ v: subtotalRealisasi, f: sumSub(realizedSubRows), t: 'n', z: acctFormat });
+        rowSubtotal.push({ v: subtotalInternal, t: 'n', z: acctFormat });
+        rowSubtotal.push({ v: subtotalBudget, t: 'n', z: acctFormat });
+        if (activeTab === 'realisasi') rowSubtotal.push({ v: subtotalRealisasi, t: 'n', z: acctFormat });
         wsData.push(rowSubtotal);
 
         currentRowIdx++; const mgmtRow = currentRowIdx;
         let rowMgmt = [`MANAGEMENT FEE (${mgmtPct}%)`, '', ''];
-        rowMgmt.push(''); rowMgmt.push({ v: managementFee, f: `E${subtotalRow}*${mgmtPct / 100}`, t: 'n', z: acctFormat });
+        rowMgmt.push(''); rowMgmt.push({ v: managementFee, t: 'n', z: acctFormat });
         if (activeTab === 'realisasi') rowMgmt.push('');
         wsData.push(rowMgmt);
 
         currentRowIdx++; const totalRow = currentRowIdx;
         let rowTotal = ['TOTAL', '', ''];
-        rowTotal.push({ v: totalInternal, f: `D${subtotalRow}`, t: 'n', z: acctFormat });
-        rowTotal.push({ v: totalBudget, f: `E${subtotalRow}+E${mgmtRow}`, t: 'n', z: acctFormat });
+        rowTotal.push({ v: totalInternal, t: 'n', z: acctFormat });
+        rowTotal.push({ v: totalBudget, t: 'n', z: acctFormat });
         if (activeTab === 'realisasi') rowTotal.push('');
         wsData.push(rowTotal);
 
         currentRowIdx++; const ppnRow = currentRowIdx;
         let rowPPN = ['PPN (11%)', '', ''];
-        rowPPN.push(''); rowPPN.push({ v: ppn, f: `E${totalRow}*0.11`, t: 'n', z: acctFormat });
+        rowPPN.push(''); rowPPN.push({ v: ppn, t: 'n', z: acctFormat });
         if (activeTab === 'realisasi') rowPPN.push('');
         wsData.push(rowPPN);
 
