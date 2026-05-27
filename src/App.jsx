@@ -324,6 +324,7 @@ function App({ user, token, onLogout }) {
                     periode: form.periode || '', periodeStart: form.periode_start || '', periodeEnd: form.periode_end || '',
                     managementFeePercent: form.management_fee_pct != null ? form.management_fee_pct : 10,
                     note: form.note || '', creatorName: form.creator_name || 'Unknown',
+                    revisionNote: form.revision_note || '',
                     divisionId: form.division_id || ''
                 });
                 setSelectedDivisionId(form.division_id || '');
@@ -518,9 +519,16 @@ function App({ user, token, onLogout }) {
                 </div>
             )}
             {currentStatus === STATUS.REVISION && canEdit && (
-                <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '10px', padding: '0.75rem 1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#ef4444', fontSize: '0.875rem', fontWeight: 500 }}>
-                    <RefreshCw size={16} />
-                    <span>Form sent back for revision. Please revise and re-submit.</span>
+                <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '10px', padding: '0.75rem 1rem', marginBottom: '1rem', color: '#ef4444', fontSize: '0.875rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 500, marginBottom: eventData.revisionNote ? '0.4rem' : 0 }}>
+                        <RefreshCw size={16} />
+                        <span>Form sent back for revision. Please revise and re-submit.</span>
+                    </div>
+                    {eventData.revisionNote && (
+                        <div style={{ marginLeft: '1.5rem', fontStyle: 'italic', opacity: 0.85, fontSize: '0.8rem' }}>
+                            Reason: "{eventData.revisionNote}"
+                        </div>
+                    )}
                 </div>
             )}
             {currentStatus === STATUS.PENDING && (
