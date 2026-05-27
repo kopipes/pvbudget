@@ -74,6 +74,7 @@ function App({ user, token, onLogout }) {
     const [approvalHistory, setApprovalHistory] = useState([]);
     const [isReadOnly, setIsReadOnly] = useState(false);
     const [sourceBudget, setSourceBudget] = useState(null);
+    const [hasRealization, setHasRealization] = useState(false);
 
     const authHeaders = {
         'Content-Type': 'application/json',
@@ -405,6 +406,19 @@ function App({ user, token, onLogout }) {
                 setShowVersionHistory(false);
                 setShowDashboard(false);
                 setOpenedFormId(id);
+
+                // Check if this budget already has a realization
+                if ((!form.form_type || form.form_type === 'budget') && form.status === STATUS.APPROVED) {
+                    try {
+                        const realCheck = await fetch(`${API}/api/forms?source_budget_id=${id}`, { headers: authHeaders });
+                        if (realCheck.ok) {
+                            const realizations = await realCheck.json();
+                            setHasRealization(realizations.length > 0);
+                        }
+                    } catch (e) { setHasRealization(false); }
+                } else {
+                    setHasRealization(false);
+                }
             }
         } catch (e) { await showDialog('alert', 'Failed to load form', 'Error'); }
     };
@@ -692,8 +706,8 @@ function App({ user, token, onLogout }) {
                         <RefreshCw size={16} /> Unlock for Revision
                     </button>
                 )}
-                {/* Create Realization button - only for approved budget forms */}
-                {currentStatus === STATUS.APPROVED && (!loadedForm?.form_type || loadedForm?.form_type === 'budget') && !isCorporate && (
+                {/* Create Realization button - only for approved budget forms without realization */}
+                {currentStatus === STATUS.APPROVED && !hasRealization && (!loadedForm?.form_type || loadedForm?.form_type === 'budget') && !isCorporate && (
                     <button className="btn btn-sm" style={{ background: '#f59e0b', color: '#fff' }} onClick={handleCreateRealization}>
                         <Receipt size={16} /> Create Realization
                     </button>
