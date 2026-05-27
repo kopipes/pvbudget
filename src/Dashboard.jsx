@@ -192,6 +192,15 @@ function Dashboard({ user, token, onLogout, onOpenForm }) {
                 <div key={form.id} className="dash-card dash-card-pending" onClick={() => onOpenForm && onOpenForm(form.id)}>
                   <div className="dash-card-top">
                     {statusBadge('pending')}
+                    {form.approval_stage === 'pending_2nd' ? (
+                      <span style={{ background: 'rgba(234,179,8,0.15)', color: '#CA8A04', border: '1px solid rgba(234,179,8,0.3)', padding: '2px 8px', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 600 }}>
+                        2nd Needed
+                      </span>
+                    ) : (
+                      <span style={{ background: 'rgba(59,130,246,0.15)', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.3)', padding: '2px 8px', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 600 }}>
+                        Awaiting 1st
+                      </span>
+                    )}
                     <span className="dash-card-version">v{form.version_number || 1}</span>
                   </div>
                   <div className="dash-card-title">{form.event || 'Untitled Event'}</div>

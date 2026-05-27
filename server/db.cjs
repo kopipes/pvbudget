@@ -105,6 +105,12 @@ const db = new sqlite3.Database(dbPath, (err) => {
         db.run(`ALTER TABLE forms ADD COLUMN rejected_at DATETIME`, () => {});
         db.run(`ALTER TABLE users ADD COLUMN division_id INTEGER`, () => {});
         db.run(`ALTER TABLE forms ADD COLUMN division_id INTEGER`, () => {});
+        db.run(`ALTER TABLE forms ADD COLUMN approval_stage TEXT DEFAULT 'pending_1st'`, () => {});
+        db.run(`ALTER TABLE forms ADD COLUMN approved_by_1 INTEGER`, () => {});
+        db.run(`ALTER TABLE forms ADD COLUMN approved_at_1 DATETIME`, () => {});
+        db.run(`ALTER TABLE forms ADD COLUMN approved_by_2 INTEGER`, () => {});
+        db.run(`ALTER TABLE forms ADD COLUMN approved_at_2 DATETIME`, () => {});
+        db.run(`ALTER TABLE approval_history ADD COLUMN approval_stage TEXT`, () => {});
 
         // Seed default admin user if no users exist
         db.get('SELECT COUNT(*) as count FROM users', (err, row) => {

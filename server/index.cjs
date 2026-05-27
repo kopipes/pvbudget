@@ -290,7 +290,7 @@ app.post('/api/forms/:id/submit', (req, res) => {
     });
 });
 
-// 10. POST /api/forms/:id/approve (Corporate or Admin approves)
+// 10. POST /api/forms/:id/approve (Corporate or Admin approves — 2-stage approval)
 app.post('/api/forms/:id/approve', (req, res) => {
     const { id } = req.params;
     const { note } = req.body;
@@ -305,24 +305,38 @@ app.post('/api/forms/:id/approve', (req, res) => {
         if (form.status !== STATUS.PENDING) {
             return res.status(400).json({ error: 'Only pending forms can be approved' });
         }
-
-        // Archive previous approved version
-        db.run(
-            `UPDATE forms SET status = 'archived', updated_at = CURRENT_TIMESTAMP WHERE root_form_id = ? AND status = ? AND id != ?`,
-            [form.root_form_id || form.id, STATUS.APPROVED, id],
-            () => {}
-        );
-
-        const rootId = form.root_form_id || form.id;
-        db.run(
-            `UPDATE forms SET status = ?, approved_at = CURRENT_TIMESTAMP, route_at = CURRENT_TIMESTAMP, approved_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-            [STATUS.APPROVED, req.user.id, id],
-            function (err) {
-                if (err) return res.status(500).json({ error: err.message });
-                db.run(`INSERT INTO approval_history (form_id, action, note, actor_id) VALUES (?, 'approve', ?, ?)`, [id, note || '', req.user.id], () => {});
-                res.json({ id, message: 'Form approved successfully' });
+        if (form.approval_stage === 'pending_2nd') {
+            // === STAGE 2: Final approval ===
+            db.run(
+                `UPDATE forms SET status = ?, approval_stage = ?, approved_at_2 = CURRENT_TIMESTAMP, approved_by_2 = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+                [STATUS.APPROVED, 'final', req.user.id, id],
+                function (err) {
+                    if (err) return res.status(500).json({ error: err.message });
+                    // Archive previous approved version
+                    db.run(`UPDATE forms SET status = 'archived', updated_at = CURRENT_TIMESTAMP WHERE root_form_id = ? AND status = ? AND id != ?`,
+                        [form.root_form_id || form.id, STATUS.APPROVED, id], () => {});
+                    db.run(`INSERT INTO approval_history (form_id, action, note, actor_id, approval_stage) VALUES (?, 'approve', ?, ?, ?)`,
+                        [id, note || 'Final approval', req.user.id, '2nd'], () => {});
+                    res.json({ id, message: 'Form fully approved! (2nd approval complete)' });
+                }
+            );
+        } else {
+            // === STAGE 1: First approval ===
+            // Prevent same user from approving both stages
+            if (form.approved_by_1 && form.approved_by_1 === req.user.id) {
+                return res.status(400).json({ error: 'You already approved this form at stage 1. Another approver is needed for stage 2.' });
             }
-        );
+            db.run(
+                `UPDATE forms SET approval_stage = ?, approved_at_1 = CURRENT_TIMESTAMP, approved_by_1 = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+                ['pending_2nd', req.user.id, id],
+                function (err) {
+                    if (err) return res.status(500).json({ error: err.message });
+                    db.run(`INSERT INTO approval_history (form_id, action, note, actor_id, approval_stage) VALUES (?, 'approve', ?, ?, ?)`,
+                        [id, note || 'First approval', req.user.id, '1st'], () => {});
+                    res.json({ id, message: 'First approval recorded. Awaiting second approval from different Admin or Corporate.' });
+                }
+            );
+        }
     });
 });
 
@@ -354,17 +368,16 @@ app.post('/api/forms/:id/reject', (req, res) => {
             () => {}
         );
 
-        // Create new revision version
+        // Create new revision version — reset approval stage
         const rootId = form.root_form_id || form.id;
-        const nextVersion = (form.root_form_id ? form.version_number + 1 : 1) || 1;
 
-        const sql = `INSERT INTO forms (form_type, project_no, event, venue, periode, periode_start, periode_end, management_fee_pct, data, note, status, version_number, root_form_id, revision_note, parent_id, created_by, division_id)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+        const sql = `INSERT INTO forms (form_type, project_no, event, venue, periode, periode_start, periode_end, management_fee_pct, data, note, status, version_number, root_form_id, revision_note, parent_id, created_by, division_id, approval_stage, rejected_by, rejected_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
         const params = [
             form.form_type, form.project_no, form.event, form.venue, form.periode, form.periode_start, form.periode_end,
             form.management_fee_pct, form.data, form.note,
             STATUS.REVISION, form.version_number + 1, rootId || id,
-            note, id, req.user.id, form.division_id
+            note, id, req.user.id, form.division_id, 'pending_1st', req.user.id, new Date().toISOString()
         ];
 
         db.run(sql, params, function (err) {

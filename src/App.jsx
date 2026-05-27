@@ -51,7 +51,7 @@ function App({ user, token, onLogout }) {
         divisionId: user.division_id || ''
     });
 
-    const [items, setItems] = useState([{ id: 'm1', name: 'NEW SECTION', subs: [] }]);
+    const [loadedForm, setLoadedForm] = useState(null);
     const [currentFormId, setCurrentFormId] = useState(null);
     const [currentStatus, setCurrentStatus] = useState(STATUS.DRAFT);
     const [currentVersion, setCurrentVersion] = useState(1);
@@ -187,7 +187,7 @@ function App({ user, token, onLogout }) {
         setCurrentVersion(1);
         setIsReadOnly(false);
         setSelectedDivisionId(user.division_id || '');
-        setOpenedFormId(null);
+        setLoadedForm(null);
     };
 
     const handleSaveForm = async () => {
@@ -315,6 +315,7 @@ function App({ user, token, onLogout }) {
             if (res.status === 401) { onLogout(); return; }
             if (res.ok) {
                 const form = await res.json();
+                setLoadedForm(form);
                 setCurrentFormId(form.id);
                 setCurrentStatus(form.status);
                 setCurrentVersion(form.version_number || 1);
@@ -568,12 +569,27 @@ function App({ user, token, onLogout }) {
                 {/* Corporate/Admin approval actions */}
                 {canApprove && currentStatus === STATUS.PENDING && currentFormId && (
                     <>
-                        <button className="btn btn-sm" style={{ background: 'var(--success)', color: '#fff' }} onClick={handleApproveForm}>
-                            <Check size={16} /> Approve
-                        </button>
-                        <button className="btn btn-sm" style={{ background: '#ef4444', color: '#fff' }} onClick={handleRejectForm}>
-                            <X size={16} /> Reject / Revise
-                        </button>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                {form.approval_stage === 'pending_2nd' ? (
+                                    <span style={{ background: 'rgba(234,179,8,0.15)', color: '#CA8A04', border: '1px solid rgba(234,179,8,0.3)', padding: '3px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600 }}>
+                                        <CheckCircle size={11} style={{ display: 'inline', marginRight: 3 }} />Awaiting 2nd Approval
+                                    </span>
+                                ) : (
+                                    <span style={{ background: 'rgba(234,179,8,0.15)', color: '#CA8A04', border: '1px solid rgba(234,179,8,0.3)', padding: '3px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600 }}>
+                                        <Clock size={11} style={{ display: 'inline', marginRight: 3 }} />Awaiting 1st Approval
+                                    </span>
+                                )}
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                <button className="btn btn-sm" style={{ background: 'var(--success)', color: '#fff' }} onClick={handleApproveForm}>
+                                    <Check size={16} /> {form.approval_stage === 'pending_2nd' ? 'Final Approve' : 'Approve (1st)'}
+                                </button>
+                                <button className="btn btn-sm" style={{ background: '#ef4444', color: '#fff' }} onClick={handleRejectForm}>
+                                    <X size={16} /> Reject / Revise
+                                </button>
+                            </div>
+                        </div>
                     </>
                 )}
                 {/* Admin unlock approved */}
