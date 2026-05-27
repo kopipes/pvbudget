@@ -120,7 +120,8 @@ app.get('/api/forms/:id', (req, res) => {
 
     db.get(
         `SELECT f.*, u.display_name as creator_name, u.username as creator_username, u.division_id, div.name as division_name,
-          (SELECT display_name FROM users WHERE id = f.approved_by) as approver_name,
+          (SELECT display_name FROM users WHERE id = f.approved_by_1) as approver_1_name,
+          (SELECT display_name FROM users WHERE id = f.approved_by_2) as approver_2_name,
           (SELECT display_name FROM users WHERE id = f.rejected_by) as rejector_name
          FROM forms f
          LEFT JOIN users u ON f.created_by = u.id
@@ -152,7 +153,8 @@ app.get('/api/forms/pending', (req, res) => {
     }
 
     db.all(
-        `SELECT f.*, u.display_name as creator_name, u.division_id, div.name as division_name
+        `SELECT f.*, u.display_name as creator_name, u.division_id, div.name as division_name,
+          (SELECT display_name FROM users WHERE id = f.approved_by_1) as approver_1_name
          FROM forms f
          LEFT JOIN users u ON f.created_by = u.id
          LEFT JOIN divisions div ON f.division_id = div.id
@@ -307,6 +309,10 @@ app.post('/api/forms/:id/approve', (req, res) => {
         }
         if (form.approval_stage === 'pending_2nd') {
             // === STAGE 2: Final approval ===
+            // Prevent same user from doing both stages
+            if (form.approved_by_1 && form.approved_by_1 === req.user.id) {
+                return res.status(400).json({ error: 'You already approved this form at stage 1. A different approver is required for stage 2.' });
+            }
             db.run(
                 `UPDATE forms SET status = ?, approval_stage = ?, approved_at_2 = CURRENT_TIMESTAMP, approved_by_2 = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
                 [STATUS.APPROVED, 'final', req.user.id, id],

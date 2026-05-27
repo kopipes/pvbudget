@@ -99,7 +99,8 @@ function Dashboard({ user, token, onLogout, onOpenForm }) {
 
   useEffect(() => {
     fetchDashboardData();
-  }, [searchTerm]);
+  }, [searchTerm, user.role, token]);
+
 
   const statsCards = [
     { key: 'total',    label: 'Total Projects', icon: FileText,   color: '#1e293b', value: stats.total },
