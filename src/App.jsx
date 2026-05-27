@@ -241,9 +241,16 @@ function App({ user, token, onLogout }) {
             const res = await fetch(`${API}/api/forms/${currentFormId}/approve`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ note: note || '' }) });
             const data = await res.json();
             if (!res.ok) { await showDialog('alert', data.error || 'Failed to approve', 'Error'); return; }
-            setCurrentStatus(STATUS.APPROVED);
             fetchPendingApprovals();
-            await showDialog('alert', 'Form approved!', 'Approved');
+            // Reload form to get updated approval_stage
+            const formRes = await fetch(`${API}/api/forms/${currentFormId}`, { headers: authHeaders });
+            if (formRes.ok) {
+                const updatedForm = await formRes.json();
+                setLoadedForm(updatedForm);
+                setCurrentStatus(updatedForm.status);
+                setIsReadOnly(updatedForm.readonly || false);
+            }
+            await showDialog('alert', data.message, data.message.includes('fully') ? 'Approved' : 'First Approval');
         } catch (e) { await showDialog('alert', 'Failed to approve', 'Error'); }
     };
 
