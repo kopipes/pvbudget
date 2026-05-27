@@ -652,13 +652,8 @@ function App({ user, token, onLogout }) {
             {/* APP TITLE & TABS */}
             <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
                 <h1 style={{ fontWeight: '800', letterSpacing: '4px', color: 'var(--primary)', textTransform: 'uppercase', margin: 0 }}>
-                    {currentFormId && loadedForm?.form_type === 'realization' ? 'REALISASI' : 'BUDGET'}
+                    {isRealizationForm ? 'REALISASI' : 'BUDGET'}
                 </h1>
-                {currentFormId && loadedForm?.form_type === 'realization' && (
-                    <div style={{ display: 'inline-flex', marginTop: '1rem', background: 'var(--surface)', borderRadius: '8px', padding: '4px', boxShadow: 'var(--shadow-sm)' }}>
-                        <button className="btn btn-sm btn-primary" style={{ border: 'none', boxShadow: 'none' }}>REALISASI</button>
-                    </div>
-                )}
             </div>
 
             {/* TOP ACTION BAR */}
