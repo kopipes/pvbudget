@@ -488,6 +488,9 @@ function App({ user, token, onLogout }) {
             eventData.note.split('\n').forEach(line => { setCell(r, 0, line); r++; });
         }
 
+        // Set the sheet range so Excel sees data
+        ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: r - 1, c: activeTab === 'realisasi' ? 5 : 4 } });
+
         ws['!cols'] = [
             { wch: 35 }, { wch: 10 }, { wch: 10 }, { wch: 20 }, { wch: 20 },
             ...(activeTab === 'realisasi' ? [{ wch: 20 }] : [])
