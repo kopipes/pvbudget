@@ -214,7 +214,8 @@ function App({ user, token, onLogout }) {
             const data = await res.json();
             if (!res.ok) {
                 if (data.existing_id) {
-                    await showDialog('alert', data.error, 'Realization Exists');
+                    const view = await showDialog('confirm', `${data.error}. Would you like to view it?`, 'Realization Exists');
+                    if (view) loadForm(data.existing_id);
                     return;
                 }
                 await showDialog('alert', data.error || 'Failed to create realization', 'Error');
