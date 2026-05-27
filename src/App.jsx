@@ -87,6 +87,7 @@ function App({ user, token, onLogout }) {
     const isManager = user.role === 'manager';
     const isUser = user.role === 'user';
     const canEdit = !isReadOnly && !isCorporate && [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus);
+    const canEditRealisasi = !isReadOnly && !isCorporate && (canEdit || (currentStatus === STATUS.APPROVED && activeTab === 'realisasi' && hasRealization));
     const canSubmit = [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus) && (currentStatus !== STATUS.REVISION || currentFormId);
     const canApprove = isAdmin || isCorporate;
     const canDelete = isAdmin && [STATUS.DRAFT, STATUS.REVISION, 'archived'].includes(currentStatus);
@@ -907,7 +908,7 @@ function App({ user, token, onLogout }) {
                                             </td>
                                             {activeTab === 'realisasi' && (
                                                 <td style={{ background: 'rgba(234,179,8,0.05)', padding: '0 0.5rem' }}>
-                                                    <input type="text" className="cell-input align-right" value={sub.actualRate === 0 ? '' : formatCurrency(sub.actualRate)} onChange={(e) => updateSubItem(mainItem.id, sub.id, 'actualRate', parseCurrency(e.target.value))} style={{ width: '100%', color: 'var(--primary)', fontWeight: 600 }} placeholder="Actual Total" disabled={!canEdit} />
+                                                    <input type="text" className="cell-input align-right" value={sub.actualRate === 0 ? '' : formatCurrency(sub.actualRate)} onChange={(e) => updateSubItem(mainItem.id, sub.id, 'actualRate', parseCurrency(e.target.value))} style={{ width: '100%', color: 'var(--primary)', fontWeight: 600 }} placeholder="Actual Total" disabled={!canEditRealisasi} />
                                                 </td>
                                             )}
                                             <td className="col-actions">
