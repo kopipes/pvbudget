@@ -503,11 +503,11 @@ app.post('/api/forms/:id/create-realization', (req, res) => {
                 }));
             } catch (e) {}
 
-            const sql = `INSERT INTO forms (form_type, project_no, event, venue, periode, periode_start, periode_end, management_fee_pct, data, note, status, version_number, source_budget_id, created_by, division_id)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`;
+            const sql = `INSERT INTO forms (form_type, event, venue, periode, periode_start, periode_end, management_fee_pct, data, note, status, version_number, source_budget_id, created_by, division_id)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`;
             const params = [
                 'realization',
-                form.project_no, form.event, form.venue, form.periode, form.periode_start, form.periode_end,
+                form.event, form.venue, form.periode, form.periode_start, form.periode_end,
                 form.management_fee_pct,
                 JSON.stringify(data),
                 form.note || '',
