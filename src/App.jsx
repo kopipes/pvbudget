@@ -158,7 +158,8 @@ function App({ user, token, onLogout }) {
     };
     const removeSubItem = (mainId, subId) => { if (!canEdit) return; setItems(items.map(item => item.id === mainId ? { ...item, subs: item.subs.filter(sub => sub.id !== subId) } : item)); };
     const updateSubItem = (mainId, subId, field, value) => {
-        if (!canEdit) return;
+        if (field === 'actualRate' && !canEditRealisasi) return;
+        if (field !== 'actualRate' && !canEdit) return;
         setItems(items.map(item => {
             if (item.id === mainId) return { ...item, subs: item.subs.map(sub => sub.id === subId ? { ...sub, [field]: value } : sub) };
             return item;
