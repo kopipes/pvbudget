@@ -71,6 +71,7 @@ function App({ user, token, onLogout }) {
     const [myForms, setMyForms] = useState([]);
     const [selectedDivisionId, setSelectedDivisionId] = useState(user.division_id || '');
     const [divisions, setDivisions] = useState([]);
+    const [approvalHistory, setApprovalHistory] = useState([]);
     const [isReadOnly, setIsReadOnly] = useState(false);
 
     const authHeaders = {
@@ -118,6 +119,13 @@ function App({ user, token, onLogout }) {
         try {
             const res = await fetch(`${API}/api/forms/${formId}/history`, { headers: authHeaders });
             if (res.ok) setVersionHistory(await res.json());
+        } catch (e) { console.error(e); }
+    };
+
+    const fetchApprovalHistory = async (formId) => {
+        try {
+            const res = await fetch(`${API}/api/forms/${formId}/approval-history`, { headers: authHeaders });
+            if (res.ok) setApprovalHistory(await res.json());
         } catch (e) { console.error(e); }
     };
 
@@ -324,6 +332,7 @@ function App({ user, token, onLogout }) {
             if (res.ok) {
                 const form = await res.json();
                 setLoadedForm(form);
+                fetchApprovalHistory(form.id);
                 setCurrentFormId(form.id);
                 setCurrentStatus(form.status);
                 setCurrentVersion(form.version_number || 1);
@@ -599,6 +608,31 @@ function App({ user, token, onLogout }) {
                             </div>
                         </div>
                     </>
+                )}
+                {/* Approval history timeline */}
+                {approvalHistory.length > 0 && (
+                    <div style={{ marginTop: '0.5rem', padding: '0.6rem', background: 'var(--surface)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Approval Log</div>
+                        {approvalHistory.map((h, i) => (
+                            <div key={i} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.4rem', alignItems: 'flex-start' }}>
+                                <div style={{ width: 8, height: 8, borderRadius: '50%', background: h.action === 'approve' ? 'var(--success)' : '#ef4444', flexShrink: 0, marginTop: 3 }} />
+                                <div style={{ flex: 1, fontSize: '0.8rem' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ fontWeight: 500 }}>{h.actor_name}</span>
+                                        <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{h.created_at ? new Date(h.created_at).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' }) : ''}</span>
+                                    </div>
+                                    <div style={{ color: h.action === 'approve' ? '#16a34a' : '#ef4444', fontSize: '0.75rem', fontWeight: 500 }}>
+                                        {h.action === 'approve' ? (h.approval_stage === '1st' ? '1st Approval' : 'Final Approval') : 'Revision Requested'}
+                                    </div>
+                                    {h.note ? (
+                                        <div style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '0.15rem' }}>
+                                            "{h.note}"
+                                        </div>
+                                    ) : null}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
                 )}
                 {/* Admin unlock approved */}
                 {isAdmin && currentStatus === STATUS.APPROVED && currentFormId && (
