@@ -52,6 +52,7 @@ function App({ user, token, onLogout }) {
     });
 
     const [loadedForm, setLoadedForm] = useState(null);
+    const [items, setItems] = useState([{ id: 'm1', name: 'NEW SECTION', subs: [] }]);
     const [currentFormId, setCurrentFormId] = useState(null);
     const [currentStatus, setCurrentStatus] = useState(STATUS.DRAFT);
     const [currentVersion, setCurrentVersion] = useState(1);
