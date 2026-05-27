@@ -437,36 +437,58 @@ function App({ user, token, onLogout }) {
             return `SUM(${startCell}:${endCell})`;
         };
 
-        wsData.push(['SUBTOTAL', '', '',
-            { t: 'n', v: subtotalInternal, z: acctFormat },
-            { t: 'n', v: subtotalBudget, z: acctFormat }]);
-        if (activeTab === 'realisasi') wsData.push(['SUBTOTAL REALISASI', '', '',
-            { t: 'n', v: subtotalInternal, z: acctFormat },
-            { t: 'n', v: subtotalBudget, z: acctFormat },
-            { t: 'n', v: subtotalRealisasi, z: acctFormat }]);
+        // Track row indices for formulas
+        const subtotalRowIdx = wsData.length;
+        const realizasiSubtotalRowIdx = activeTab === 'realisasi' ? wsData.length + 1 : -1;
+        const mgmtFeeRowIdx = wsData.length + (activeTab === 'realisasi' ? 2 : 1);
+        const totalRowIdx = wsData.length + (activeTab === 'realisasi' ? 3 : 2);
+        const ppnRowIdx = wsData.length + (activeTab === 'realisasi' ? 4 : 3);
+        const grandTotalRowIdx = wsData.length + (activeTab === 'realisasi' ? 5 : 4);
 
+        // Helper to get cell reference
+        const cellRef = (row, col) => XLSX.utils.encode_cell({ r: row, c: col });
+
+        // Subtotal row - uses SUM formulas
+        wsData.push(['SUBTOTAL', '', '',
+            { t: 'n', f: sumRange(3), z: acctFormat },
+            { t: 'n', f: sumRange(4), z: acctFormat }]);
+        if (activeTab === 'realisasi') wsData.push(['SUBTOTAL REALISASI', '', '',
+            { t: 'n', f: sumRange(3), z: acctFormat },
+            { t: 'n', f: sumRange(4), z: acctFormat },
+            { t: 'n', f: sumRange(5), z: acctFormat }]);
+
+        // Management Fee row - formula: subtotal * percentage
         wsData.push([`MANAGEMENT FEE (${mgmtPct}%)`, '', '',
             '',
-            { t: 'n', v: managementFee, z: acctFormat }]);
+            { t: 'n', f: `${cellRef(subtotalRowIdx, 4)}*${mgmtPct}/100`, z: acctFormat }]);
+
+        // Total row - formula: subtotal + management fee
         wsData.push(['TOTAL', '', '',
-            { t: 'n', v: totalInternal, z: acctFormat },
-            { t: 'n', v: totalBudget, z: acctFormat }]);
+            { t: 'n', f: cellRef(subtotalRowIdx, 3), z: acctFormat },
+            { t: 'n', f: `${cellRef(subtotalRowIdx, 4)}+${cellRef(mgmtFeeRowIdx, 4)}`, z: acctFormat }]);
+
+        // PPN row - formula: total * 11%
         wsData.push(['PPN (11%)', '', '',
             '',
-            { t: 'n', v: ppn, z: acctFormat }]);
+            { t: 'n', f: `${cellRef(totalRowIdx, 4)}*0.11`, z: acctFormat }]);
+
+        // Grand Total row - formula: total + PPN
         wsData.push(['GRAND TOTAL', '', '',
-            { t: 'n', v: grandTotalInternal, z: acctFormat },
-            { t: 'n', v: grandTotalBudget, z: acctFormat }]);
-        if (activeTab === 'realisasi') wsData[wsData.length - 1].push({ t: 'n', v: grandTotalRealisasi, z: acctFormat });
+            { t: 'n', f: cellRef(totalRowIdx, 3), z: acctFormat },
+            { t: 'n', f: `${cellRef(totalRowIdx, 4)}+${cellRef(ppnRowIdx, 4)}`, z: acctFormat }]);
+        if (activeTab === 'realisasi') {
+            wsData[wsData.length - 1].push({ t: 'n', f: sumRange(5), z: acctFormat });
+        }
 
         wsData.push([]);
-        wsData.push(['', '', '', 'Submitted Budget', { t: 'n', v: grandTotalBudget, z: acctFormat }]);
-        wsData.push(['', '', '', 'After PPN', { t: 'n', v: afterPpn, z: acctFormat }]);
-        wsData.push(['', '', '', 'After PPH', { t: 'n', v: afterPph, z: acctFormat }]);
-        wsData.push(['', '', '', 'P/L (Budget)', { t: 'n', v: profitLoss, z: acctFormat }]);
+        const metricsStartRow = wsData.length;
+        wsData.push(['', '', '', 'Submitted Budget', { t: 'n', f: cellRef(grandTotalRowIdx, 4), z: acctFormat }]);
+        wsData.push(['', '', '', 'After PPN', { t: 'n', f: `${cellRef(metricsStartRow, 4)}*1.11`, z: acctFormat }]);
+        wsData.push(['', '', '', 'After PPH', { t: 'n', f: `${cellRef(metricsStartRow + 1, 4)}*0.98`, z: acctFormat }]);
+        wsData.push(['', '', '', 'P/L (Budget)', { t: 'n', f: `${cellRef(metricsStartRow + 2, 4)}-${cellRef(grandTotalRowIdx, 3)}`, z: acctFormat }]);
         if (activeTab === 'realisasi') {
-            wsData.push(['', '', '', 'Actual Budget (Realisasi)', { t: 'n', v: grandTotalRealisasi, z: acctFormat }]);
-            wsData.push(['', '', '', 'P/L (Realisasi)', { t: 'n', v: profitLossRealisasi, z: acctFormat }]);
+            wsData.push(['', '', '', 'Actual Budget (Realisasi)', { t: 'n', f: cellRef(grandTotalRowIdx, 5), z: acctFormat }]);
+            wsData.push(['', '', '', 'P/L (Realisasi)', { t: 'n', f: `${cellRef(grandTotalRowIdx, 5)}-${cellRef(grandTotalRowIdx, 3)}`, z: acctFormat }]);
         }
 
         if (eventData.note) {
