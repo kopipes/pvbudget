@@ -654,6 +654,13 @@ function App({ user, token, onLogout }) {
                 <h1 style={{ fontWeight: '800', letterSpacing: '4px', color: 'var(--primary)', textTransform: 'uppercase', margin: 0 }}>
                     {isRealizationForm ? 'REALISASI' : 'BUDGET'}
                 </h1>
+                {/* Show BUDGET/REALISASI tabs only for approved forms with realization */}
+                {currentStatus === STATUS.APPROVED && hasRealization && loadedForm?.form_type !== 'realization' && (
+                    <div style={{ display: 'inline-flex', marginTop: '1rem', background: 'var(--surface)', borderRadius: '8px', padding: '4px', boxShadow: 'var(--shadow-sm)' }}>
+                        <button className={`btn btn-sm ${activeTab === 'budget' ? 'btn-primary' : 'btn-secondary'}`} style={{ border: 'none', boxShadow: 'none' }} onClick={() => setActiveTab('budget')}>BUDGET</button>
+                        <button className={`btn btn-sm ${activeTab === 'realisasi' ? 'btn-primary' : 'btn-secondary'}`} style={{ border: 'none', boxShadow: 'none' }} onClick={() => setActiveTab('realisasi')}>REALISASI</button>
+                    </div>
+                )}
             </div>
 
             {/* TOP ACTION BAR */}
