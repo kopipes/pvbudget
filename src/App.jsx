@@ -436,6 +436,34 @@ function App({ user, token, onLogout }) {
         loadForm(id);
     };
 
+    // Handle switching between BUDGET and REALISASI tabs
+    const handleSwitchTab = async (tab) => {
+        setActiveTab(tab);
+        if (tab === 'realisasi' && currentFormId && !isRealizationForm) {
+            // Load realization data from linked realization form
+            try {
+                const realCheck = await fetch(`${API}/api/forms?source_budget_id=${currentFormId}`, { headers: authHeaders });
+                if (realCheck.ok) {
+                    const realizations = await realCheck.json();
+                    if (realizations.length > 0) {
+                        const realizationRes = await fetch(`${API}/api/forms/${realizations[0].id}`, { headers: authHeaders });
+                        if (realizationRes.ok) {
+                            const realizationForm = await realizationRes.json();
+                            if (realizationForm.data && Array.isArray(realizationForm.data)) {
+                                setItems(realizationForm.data);
+                            }
+                        }
+                    }
+                }
+            } catch (e) { console.error('Failed to load realization data', e); }
+        } else if (tab === 'budget' && currentFormId && loadedForm) {
+            // Reload budget data
+            if (loadedForm.data && Array.isArray(loadedForm.data)) {
+                setItems(loadedForm.data);
+            }
+        }
+    };
+
     // --- Excel Export ---
     const handleExportExcel = () => {
         const wsData = [];
@@ -657,8 +685,8 @@ function App({ user, token, onLogout }) {
                 {/* Show BUDGET/REALISASI tabs only for approved forms with realization */}
                 {currentStatus === STATUS.APPROVED && hasRealization && loadedForm?.form_type !== 'realization' && (
                     <div style={{ display: 'inline-flex', marginTop: '1rem', background: 'var(--surface)', borderRadius: '8px', padding: '4px', boxShadow: 'var(--shadow-sm)' }}>
-                        <button className={`btn btn-sm ${activeTab === 'budget' ? 'btn-primary' : 'btn-secondary'}`} style={{ border: 'none', boxShadow: 'none' }} onClick={() => setActiveTab('budget')}>BUDGET</button>
-                        <button className={`btn btn-sm ${activeTab === 'realisasi' ? 'btn-primary' : 'btn-secondary'}`} style={{ border: 'none', boxShadow: 'none' }} onClick={() => setActiveTab('realisasi')}>REALISASI</button>
+                        <button className={`btn btn-sm ${activeTab === 'budget' ? 'btn-primary' : 'btn-secondary'}`} style={{ border: 'none', boxShadow: 'none' }} onClick={() => handleSwitchTab('budget')}>BUDGET</button>
+                        <button className={`btn btn-sm ${activeTab === 'realisasi' ? 'btn-primary' : 'btn-secondary'}`} style={{ border: 'none', boxShadow: 'none' }} onClick={() => handleSwitchTab('realisasi')}>REALISASI</button>
                     </div>
                 )}
             </div>
