@@ -389,103 +389,109 @@ function App({ user, token, onLogout }) {
 
     // --- Excel Export ---
     const handleExportExcel = () => {
-        const wsData = [];
-        const displayPeriode = eventData.periodeStart && eventData.periodeEnd ? `${eventData.periodeStart} to ${eventData.periodeEnd}` : eventData.periode;
-        const acctFormat = '#,##0.00';
+        const ws = XLSX.utils.aoa_to_sheet([[]]);
+        let r = 0;
+        const setCell = (row, col, val) => { ws[XLSX.utils.encode_cell({ r: row, c: col })] = val; };
 
-        wsData.push([`PROJECT NO.`, eventData.projectNo]);
-        wsData.push([`EVENT`, eventData.name]);
-        wsData.push([`VENUE`, eventData.venue]);
-        wsData.push([`PERIODE`, displayPeriode]);
-        wsData.push([`MANAGEMENT FEE`, `${mgmtPct}%`]);
-        wsData.push([`VERSION`, `v${currentVersion}`]);
-        wsData.push([`STATUS`, STATUS_LABELS[currentStatus] || currentStatus]);
-        wsData.push([]);
+        // --- Header info ---
+        const setH = (label, val) => { ws[XLSX.utils.encode_cell({ r, c: 0 })] = label; ws[XLSX.utils.encode_cell({ r, c: 1 })] = val; r++; };
+        setH('PROJECT NO.', eventData.projectNo || '');
+        setH('EVENT', eventData.name || '');
+        setH('VENUE', eventData.venue || '');
+        setH('PERIODE', eventData.periodeStart && eventData.periodeEnd ? `${eventData.periodeStart} to ${eventData.periodeEnd}` : eventData.periode || '');
+        setH('MANAGEMENT FEE', `${mgmtPct}%`);
+        setH('VERSION', `v${currentVersion}`);
+        setH('STATUS', STATUS_LABELS[currentStatus] || currentStatus);
+        r++;
 
-        const headerRow = ['DESCRIPTION', 'QTY', 'MDY', 'INTERNAL BUDGET', 'BUDGET'];
-        if (activeTab === 'realisasi') headerRow.push('REALISASI');
-        wsData.push(headerRow);
+        // --- Table header ---
+        const headers = ['DESCRIPTION', 'QTY', 'MDY', 'INTERNAL BUDGET', 'BUDGET'];
+        if (activeTab === 'realisasi') headers.push('REALISASI');
+        headers.forEach((h, i) => { setCell(r, i, h); });
+        const tableHeaderRow = r;
+        r++;
 
-        let currentRowIdx = 10;
-        const internalSubRows = [], budgetSubRows = [], realizedSubRows = [];
+        // --- Track item data rows for SUM formula ---
+        const itemDataRows = [];
 
         items.forEach(main => {
-            const mainRow = [main.name, '', '', '', ''];
-            if (activeTab === 'realisasi') mainRow.push('');
-            wsData.push(mainRow);
-            currentRowIdx++;
+            setCell(r, 0, main.name);
+            if (activeTab === 'realisasi') setCell(r, 5, '');
+            r++;
 
             main.subs.forEach(sub => {
-                currentRowIdx++;
-                const rowNum = currentRowIdx;
-                const rowData = [`   ${sub.name}`, { v: sub.qty, t: 'n' }, { v: sub.mdy, t: 'n' },
-                    { v: sub.qty * sub.mdy * sub.internalRate, t: 'n', z: acctFormat },
-                    { v: sub.qty * sub.mdy * sub.rate, t: 'n', z: acctFormat }];
-                internalSubRows.push(`D${rowNum}`);
-                budgetSubRows.push(`E${rowNum}`);
-                if (activeTab === 'realisasi') { rowData.push({ v: sub.actualRate || 0, t: 'n', z: acctFormat }); realizedSubRows.push(`F${rowNum}`); }
-                wsData.push(rowData);
+                itemDataRows.push(r);
+                setCell(r, 0, `  ${sub.name}`);
+                setCell(r, 1, { t: 'n', v: sub.qty });
+                setCell(r, 2, { t: 'n', v: sub.mdy });
+                setCell(r, 3, { t: 'n', v: sub.qty * sub.mdy * sub.internalRate, z: '#,##0.00' });
+                setCell(r, 4, { t: 'n', v: sub.qty * sub.mdy * sub.rate, z: '#,##0.00' });
+                if (activeTab === 'realisasi') setCell(r, 5, { t: 'n', v: sub.actualRate || 0, z: '#,##0.00' });
+                r++;
             });
         });
 
-        wsData.push([]); currentRowIdx++;
-        const sumSub = (arr) => arr.length > 0 ? arr.join('+') : '0';
-        currentRowIdx++; const subtotalRow = currentRowIdx;
-        let rowSubtotal = ['SUBTOTAL', '', ''];
-        rowSubtotal.push({ v: subtotalInternal, t: 'n', z: acctFormat });
-        rowSubtotal.push({ v: subtotalBudget, t: 'n', z: acctFormat });
-        if (activeTab === 'realisasi') rowSubtotal.push({ v: subtotalRealisasi, t: 'n', z: acctFormat });
-        wsData.push(rowSubtotal);
+        // Empty row
+        r++;
 
-        currentRowIdx++; const mgmtRow = currentRowIdx;
-        let rowMgmt = [`MANAGEMENT FEE (${mgmtPct}%)`, '', ''];
-        rowMgmt.push(''); rowMgmt.push({ v: managementFee, t: 'n', z: acctFormat });
-        if (activeTab === 'realisasi') rowMgmt.push('');
-        wsData.push(rowMgmt);
+        // --- SUBTOTAL ---
+        const subStart = itemDataRows.length > 0 ? Math.min(...itemDataRows) : tableHeaderRow + 1;
+        const subEnd = itemDataRows.length > 0 ? Math.max(...itemDataRows) : tableHeaderRow;
+        const sumRange = (col) => `SUM(${XLSX.utils.encode_cell({ r: subStart, c: col })}:${XLSX.utils.encode_cell({ r: subEnd, c: col })})`;
 
-        currentRowIdx++; const totalRow = currentRowIdx;
-        let rowTotal = ['TOTAL', '', ''];
-        rowTotal.push({ v: totalInternal, t: 'n', z: acctFormat });
-        rowTotal.push({ v: totalBudget, t: 'n', z: acctFormat });
-        if (activeTab === 'realisasi') rowTotal.push('');
-        wsData.push(rowTotal);
+        const subR = r;
+        setCell(r, 0, 'SUBTOTAL'); setCell(r, 3, { t: 'n', f: sumRange(3), z: '#,##0.00' }); setCell(r, 4, { t: 'n', f: sumRange(4), z: '#,##0.00' });
+        if (activeTab === 'realisasi') setCell(r, 5, { t: 'n', f: sumRange(5), z: '#,##0.00' });
+        r++;
 
-        currentRowIdx++; const ppnRow = currentRowIdx;
-        let rowPPN = ['PPN (11%)', '', ''];
-        rowPPN.push(''); rowPPN.push({ v: ppn, t: 'n', z: acctFormat });
-        if (activeTab === 'realisasi') rowPPN.push('');
-        wsData.push(rowPPN);
+        // --- MANAGEMENT FEE ---
+        const mgmtR = r;
+        setCell(r, 0, `MANAGEMENT FEE (${mgmtPct}%)`); setCell(r, 4, { t: 'n', f: `E${subR}*${mgmtPct / 100}`, z: '#,##0.00' });
+        if (activeTab === 'realisasi') setCell(r, 5, '');
+        r++;
 
-        currentRowIdx++; const grandRow = currentRowIdx;
-        let rowGrand = ['GRAND TOTAL', '', ''];
-        rowGrand.push({ v: grandTotalInternal, t: 'n', z: acctFormat });
-        rowGrand.push({ v: grandTotalBudget, t: 'n', z: acctFormat });
-        if (activeTab === 'realisasi') rowGrand.push({ v: grandTotalRealisasi, t: 'n', z: acctFormat });
-        wsData.push(rowGrand);
+        // --- TOTAL ---
+        const totR = r;
+        setCell(r, 0, 'TOTAL'); setCell(r, 3, { t: 'n', f: `D${subR}`, z: '#,##0.00' }); setCell(r, 4, { t: 'n', f: `E${subR}+E${mgmtR}`, z: '#,##0.00' });
+        if (activeTab === 'realisasi') setCell(r, 5, '');
+        r++;
 
-        wsData.push([]); currentRowIdx++;
-        wsData.push(['', '', '', 'Submitted Budget', { v: grandTotalBudget, t: 'n', z: acctFormat }]);
-        currentRowIdx++; const afterPpnRow = currentRowIdx;
-        wsData.push(['', '', '', 'After PPN', { v: afterPpn, t: 'n', z: acctFormat }]);
-        currentRowIdx++; const afterPphRow = currentRowIdx;
-        wsData.push(['', '', '', 'After PPH', { v: afterPph, t: 'n', z: acctFormat }]);
-        currentRowIdx++;
-        wsData.push(['', '', '', 'P/L (Budget)', { v: profitLoss, t: 'n', z: acctFormat }]);
+        // --- PPN (11%) ---
+        const ppnR = r;
+        setCell(r, 0, 'PPN (11%)'); setCell(r, 4, { t: 'n', f: `E${totR}*0.11`, z: '#,##0.00' });
+        if (activeTab === 'realisasi') setCell(r, 5, '');
+        r++;
+
+        // --- GRAND TOTAL ---
+        const grandR = r;
+        setCell(r, 0, 'GRAND TOTAL'); setCell(r, 3, { t: 'n', f: `D${totR}`, z: '#,##0.00' }); setCell(r, 4, { t: 'n', f: `E${totR}+E${ppnR}`, z: '#,##0.00' });
+        if (activeTab === 'realisasi') setCell(r, 5, { t: 'n', f: `F${subR}`, z: '#,##0.00' });
+        r++;
+
+        // Empty
+        r++;
+        // --- Metrics section ---
+        setCell(r, 3, 'Submitted Budget'); setCell(r, 4, { t: 'n', f: `E${grandR}`, z: '#,##0.00' }); r++;
+        const afterPpnR = r; setCell(r, 3, 'After PPN'); setCell(r, 4, { t: 'n', f: `E${totR}`, z: '#,##0.00' }); r++;
+        const afterPphR = r; setCell(r, 3, 'After PPH'); setCell(r, 4, { t: 'n', f: `E${afterPpnR}-(E${totR}*0.02)`, z: '#,##0.00' }); r++;
+        setCell(r, 3, 'P/L (Budget)'); setCell(r, 4, { t: 'n', f: `E${afterPphR}-D${grandR}`, z: '#,##0.00' }); r++;
 
         if (activeTab === 'realisasi') {
-            wsData.push([]); currentRowIdx++;
-            currentRowIdx++; const actualRow = currentRowIdx;
-            wsData.push(['', '', '', 'Actual Budget (Realisasi)', { v: grandTotalRealisasi, t: 'n', z: acctFormat }]);
-            currentRowIdx++;
-            wsData.push(['', '', '', 'P/L (Realisasi)', { v: profitLossRealisasi, t: 'n', z: acctFormat }]);
+            r++;
+            const actualR = r; setCell(r, 3, 'Actual Budget (Realisasi)'); setCell(r, 4, { t: 'n', f: `F${subR}`, z: '#,##0.00' }); r++;
+            setCell(r, 3, 'P/L (Realisasi)'); setCell(r, 4, { t: 'n', f: `E${actualR}-D${grandR}`, z: '#,##0.00' }); r++;
         }
 
-        if (eventData.note) { wsData.push([]); wsData.push(['NOTES:']); eventData.note.split('\n').forEach(line => wsData.push([line])); }
+        if (eventData.note) {
+            r++;
+            setCell(r, 0, 'NOTES:'); r++;
+            eventData.note.split('\n').forEach(line => { setCell(r, 0, line); r++; });
+        }
 
-        const ws = XLSX.utils.aoa_to_sheet(wsData);
-        const cols = [{ wch: 35 }, { wch: 10 }, { wch: 10 }, { wch: 20 }, { wch: 20 }];
-        if (activeTab === 'realisasi') cols.push({ wch: 20 });
-        ws['!cols'] = cols;
+        ws['!cols'] = [
+            { wch: 35 }, { wch: 10 }, { wch: 10 }, { wch: 20 }, { wch: 20 },
+            ...(activeTab === 'realisasi' ? [{ wch: 20 }] : [])
+        ];
 
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Budget");
