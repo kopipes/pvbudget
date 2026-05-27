@@ -132,7 +132,7 @@ function Dashboard({ user, token, onLogout, onOpenForm }) {
       <div className="dash-nav">
         <div className="dash-nav-left">
           <div className="dash-logo">B</div>
-          <span className="dash-title">Budget Form Builder</span>
+          <span className="dash-title">PVBudget</span>
         </div>
         <div className="dash-nav-right">
           {canSeeOnOpen && (

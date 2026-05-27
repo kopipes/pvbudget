@@ -49,7 +49,7 @@ export default function LoginPage({ onLogin }) {
             <form className="login-card" onSubmit={handleSubmit}>
                 <div className="login-logo">
                     <div className="login-logo-icon">B</div>
-                    <h1 className="login-title">Budget Form Builder</h1>
+                    <h1 className="login-title">PVBudget</h1>
                     <p className="login-subtitle">Sign in to your account</p>
                 </div>
 
