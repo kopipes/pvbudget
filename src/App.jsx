@@ -418,13 +418,13 @@ function App({ user, token, onLogout }) {
             main.subs.forEach(sub => {
                 currentRowIdx++;
                 const rowNum = currentRowIdx;
-                subRow = [`   ${sub.name}`, { v: sub.qty, t: 'n' }, { v: sub.mdy, t: 'n' },
+                const rowData = [`   ${sub.name}`, { v: sub.qty, t: 'n' }, { v: sub.mdy, t: 'n' },
                     { v: sub.qty * sub.mdy * sub.internalRate, t: 'n', z: acctFormat },
                     { v: sub.qty * sub.mdy * sub.rate, t: 'n', z: acctFormat }];
                 internalSubRows.push(`D${rowNum}`);
                 budgetSubRows.push(`E${rowNum}`);
-                if (activeTab === 'realisasi') { subRow.push({ v: sub.actualRate || 0, t: 'n', z: acctFormat }); realizedSubRows.push(`F${rowNum}`); }
-                wsData.push(subRow);
+                if (activeTab === 'realisasi') { rowData.push({ v: sub.actualRate || 0, t: 'n', z: acctFormat }); realizedSubRows.push(`F${rowNum}`); }
+                wsData.push(rowData);
             });
         });
 
