@@ -692,7 +692,7 @@ function App({ user, token, onLogout }) {
                     </button>
                 )}
                 {/* Create Realization button - only for approved budget forms */}
-                {currentStatus === STATUS.APPROVED && loadedForm?.form_type === 'budget' && !isCorporate && (
+                {currentStatus === STATUS.APPROVED && (!loadedForm?.form_type || loadedForm?.form_type === 'budget') && !isCorporate && (
                     <button className="btn btn-sm" style={{ background: '#f59e0b', color: '#fff' }} onClick={handleCreateRealization}>
                         <Receipt size={16} /> Create Realization
                     </button>

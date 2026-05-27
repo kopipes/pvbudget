@@ -474,7 +474,8 @@ app.post('/api/forms/:id/create-realization', (req, res) => {
         if (!form) return res.status(404).json({ error: 'Form not found' });
 
         // Only allow creating realization from approved budget forms
-        if (form.form_type !== 'budget') {
+        // Treat null/undefined form_type as 'budget' for backward compatibility
+        if (form.form_type && form.form_type !== 'budget') {
             return res.status(400).json({ error: 'Only budget forms can be converted to realization' });
         }
         if (form.status !== STATUS.APPROVED) {
