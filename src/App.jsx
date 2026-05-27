@@ -458,26 +458,26 @@ function App({ user, token, onLogout }) {
 
         currentRowIdx++; const grandRow = currentRowIdx;
         let rowGrand = ['GRAND TOTAL', '', ''];
-        rowGrand.push({ v: grandTotalInternal, f: `D${totalRow}`, t: 'n', z: acctFormat });
-        rowGrand.push({ v: grandTotalBudget, f: `E${totalRow}+E${ppnRow}`, t: 'n', z: acctFormat });
-        if (activeTab === 'realisasi') rowGrand.push({ v: grandTotalRealisasi, f: `F${subtotalRow}`, t: 'n', z: acctFormat });
+        rowGrand.push({ v: grandTotalInternal, t: 'n', z: acctFormat });
+        rowGrand.push({ v: grandTotalBudget, t: 'n', z: acctFormat });
+        if (activeTab === 'realisasi') rowGrand.push({ v: grandTotalRealisasi, t: 'n', z: acctFormat });
         wsData.push(rowGrand);
 
         wsData.push([]); currentRowIdx++;
-        wsData.push(['', '', '', 'Submitted Budget', { v: grandTotalBudget, f: `E${grandRow}`, t: 'n', z: acctFormat }]);
+        wsData.push(['', '', '', 'Submitted Budget', { v: grandTotalBudget, t: 'n', z: acctFormat }]);
         currentRowIdx++; const afterPpnRow = currentRowIdx;
-        wsData.push(['', '', '', 'After PPN', { v: afterPpn, f: `E${totalRow}`, t: 'n', z: acctFormat }]);
+        wsData.push(['', '', '', 'After PPN', { v: afterPpn, t: 'n', z: acctFormat }]);
         currentRowIdx++; const afterPphRow = currentRowIdx;
-        wsData.push(['', '', '', 'After PPH', { v: afterPph, f: `E${afterPpnRow}-(E${totalRow}*0.02)`, t: 'n', z: acctFormat }]);
+        wsData.push(['', '', '', 'After PPH', { v: afterPph, t: 'n', z: acctFormat }]);
         currentRowIdx++;
-        wsData.push(['', '', '', 'P/L (Budget)', { v: profitLoss, f: `E${afterPphRow}-D${grandRow}`, t: 'n', z: acctFormat }]);
+        wsData.push(['', '', '', 'P/L (Budget)', { v: profitLoss, t: 'n', z: acctFormat }]);
 
         if (activeTab === 'realisasi') {
             wsData.push([]); currentRowIdx++;
             currentRowIdx++; const actualRow = currentRowIdx;
-            wsData.push(['', '', '', 'Actual Budget (Realisasi)', { v: grandTotalRealisasi, f: `F${grandRow}`, t: 'n', z: acctFormat }]);
+            wsData.push(['', '', '', 'Actual Budget (Realisasi)', { v: grandTotalRealisasi, t: 'n', z: acctFormat }]);
             currentRowIdx++;
-            wsData.push(['', '', '', 'P/L (Realisasi)', { v: profitLossRealisasi, f: `E${actualRow}-D${grandRow}`, t: 'n', z: acctFormat }]);
+            wsData.push(['', '', '', 'P/L (Realisasi)', { v: profitLossRealisasi, t: 'n', z: acctFormat }]);
         }
 
         if (eventData.note) { wsData.push([]); wsData.push(['NOTES:']); eventData.note.split('\n').forEach(line => wsData.push([line])); }
