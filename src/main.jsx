@@ -4,6 +4,8 @@ import './index.css'
 import App from './App.jsx'
 import LoginPage from './LoginPage.jsx'
 
+const API = import.meta.env.VITE_API_URL || '';
+
 function Root() {
   const [token, setToken] = useState(null);
   const [user, setUser] = useState(null);
@@ -30,7 +32,7 @@ function Root() {
 
   const handleLogout = async () => {
     try {
-      await fetch('http://localhost:3001/api/auth/logout', {
+      await fetch(`${API}/api/auth/logout`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });

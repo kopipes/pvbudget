@@ -17,9 +17,10 @@ function authMiddleware(req, res, next) {
     const token = authHeader.slice(7);
 
     db.get(
-        `SELECT u.id, u.username, u.display_name, u.role, u.manager_id
+        `SELECT u.id, u.username, u.display_name, u.role, u.manager_id, u.division_id, d.name as division_name
      FROM sessions s
-     JOIN users u ON s.user_id = u.id
+     JOIN users u ON u.id = s.user_id
+     LEFT JOIN divisions d ON u.division_id = d.id
      WHERE s.token = ?`,
         [token],
         (err, user) => {
@@ -29,8 +30,18 @@ function authMiddleware(req, res, next) {
             if (!user) {
                 return res.status(401).json({ error: 'Invalid or expired session' });
             }
-            req.user = user;
-            next();
+            // Get divisions managed by this manager
+            if (user.role === 'manager') {
+                db.all(`SELECT division_id FROM manager_divisions WHERE manager_id = ?`, [user.id], (err, divs) => {
+                    user.managedDivisions = divs.map(r => r.division_id);
+                    req.user = user;
+                    next();
+                });
+            } else {
+                user.managedDivisions = [];
+                req.user = user;
+                next();
+            }
         }
     );
 }
@@ -80,7 +91,8 @@ function setupAuthRoutes(app) {
                         username: user.username,
                         display_name: user.display_name,
                         role: user.role,
-                        manager_id: user.manager_id
+                        manager_id: user.manager_id,
+                        division_id: user.division_id
                     }
                 });
             });
@@ -111,38 +123,52 @@ function setupUserRoutes(app) {
     // List all users
     app.get('/api/users', authMiddleware, requireRole('admin'), (req, res) => {
         db.all(
-            `SELECT u.id, u.username, u.display_name, u.role, u.manager_id, u.created_at,
-              m.display_name as manager_name
+            `SELECT u.id, u.username, u.display_name, u.role, u.manager_id, u.division_id, u.created_at,
+              m.display_name as manager_name, d.name as division_name
        FROM users u
        LEFT JOIN users m ON u.manager_id = m.id
+       LEFT JOIN divisions d ON u.division_id = d.id
        ORDER BY u.created_at ASC`,
             [],
             (err, rows) => {
                 if (err) {
                     return res.status(500).json({ error: err.message });
                 }
-                res.json(rows);
+                // Get managed divisions for each manager
+                const getManagedDivisions = (userId) => new Promise((resolve) => {
+                    db.all(`SELECT division_id FROM manager_divisions WHERE manager_id = ?`, [userId], (err, divs) => {
+                        if (err) return resolve([]);
+                        resolve(divs.map(r => r.division_id));
+                    });
+                });
+                Promise.all(rows.map(r => getManagedDivisions(r.id)))
+                    .then(managedDivisionsList => {
+                        rows.forEach((row, i) => {
+                            row.managedDivisions = managedDivisionsList[i] || [];
+                        });
+                        res.json(rows);
+                    });
             }
         );
     });
 
     // Create user
     app.post('/api/users', authMiddleware, requireRole('admin'), (req, res) => {
-        const { username, password, display_name, role, manager_id } = req.body;
+        const { username, password, display_name, role, manager_id, division_id } = req.body;
 
         if (!username || !password || !display_name || !role) {
             return res.status(400).json({ error: 'username, password, display_name, and role are required' });
         }
 
-        if (!['admin', 'manager', 'user'].includes(role)) {
-            return res.status(400).json({ error: 'role must be admin, manager, or user' });
+        if (!['admin', 'corporate', 'manager', 'user'].includes(role)) {
+            return res.status(400).json({ error: 'role must be admin, corporate, manager, or user' });
         }
 
         const hash = bcrypt.hashSync(password, 10);
 
         db.run(
-            `INSERT INTO users (username, password, display_name, role, manager_id) VALUES (?, ?, ?, ?, ?)`,
-            [username, hash, display_name, role, manager_id || null],
+            `INSERT INTO users (username, password, display_name, role, manager_id, division_id) VALUES (?, ?, ?, ?, ?, ?)`,
+            [username, hash, display_name, role, manager_id || null, division_id || null],
             function (err) {
                 if (err) {
                     if (err.message.includes('UNIQUE')) {
@@ -150,7 +176,24 @@ function setupUserRoutes(app) {
                     }
                     return res.status(500).json({ error: err.message });
                 }
-                res.status(201).json({ id: this.lastID, message: 'User created successfully' });
+                const userId = this.lastID;
+
+                // Save managed divisions for managers
+                if (role === 'manager' && req.body.managedDivisions && req.body.managedDivisions.length > 0) {
+                    const insertMany = req.body.managedDivisions.map(divId =>
+                        new Promise((resolve, reject) => {
+                            db.run(`INSERT OR IGNORE INTO manager_divisions (manager_id, division_id) VALUES (?, ?)`, [userId, divId], function (err) {
+                                if (err) return reject(err);
+                                resolve();
+                            });
+                        })
+                    );
+                    Promise.all(insertMany)
+                        .then(() => res.status(201).json({ id: userId, message: 'User created successfully' }))
+                        .catch(err => res.status(500).json({ error: err.message }));
+                } else {
+                    res.status(201).json({ id: userId, message: 'User created successfully' });
+                }
             }
         );
     });
@@ -158,7 +201,7 @@ function setupUserRoutes(app) {
     // Update user
     app.put('/api/users/:id', authMiddleware, requireRole('admin'), (req, res) => {
         const { id } = req.params;
-        const { username, password, display_name, role, manager_id } = req.body;
+        const { username, password, display_name, role, manager_id, division_id } = req.body;
 
         // Build dynamic update
         const fields = [];
@@ -167,8 +210,8 @@ function setupUserRoutes(app) {
         if (username) { fields.push('username = ?'); params.push(username); }
         if (display_name) { fields.push('display_name = ?'); params.push(display_name); }
         if (role) {
-            if (!['admin', 'manager', 'user'].includes(role)) {
-                return res.status(400).json({ error: 'role must be admin, manager, or user' });
+            if (!['admin', 'corporate', 'manager', 'user'].includes(role)) {
+                return res.status(400).json({ error: 'role must be admin, corporate, manager, or user' });
             }
             fields.push('role = ?');
             params.push(role);
@@ -181,6 +224,11 @@ function setupUserRoutes(app) {
         if (manager_id !== undefined) {
             fields.push('manager_id = ?');
             params.push(manager_id);
+        }
+        // division_id can be explicitly set to null
+        if (division_id !== undefined) {
+            fields.push('division_id = ?');
+            params.push(division_id);
         }
 
         if (fields.length === 0) {
@@ -221,6 +269,95 @@ function setupUserRoutes(app) {
             // Also clean up sessions for the deleted user
             db.run('DELETE FROM sessions WHERE user_id = ?', [id]);
             res.json({ message: 'User deleted successfully' });
+        });
+    });
+
+    // ===== MANAGER MANAGED DIVISIONS ROUTES =====
+    // GET managed divisions for a specific manager
+    app.get('/api/users/:id/managed-divisions', authMiddleware, requireRole('admin'), (req, res) => {
+        const { id } = req.params;
+        db.all(`SELECT division_id FROM manager_divisions WHERE manager_id = ?`, [id], (err, rows) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json(rows.map(r => r.division_id));
+        });
+    });
+
+    // PUT update managed divisions for a manager
+    app.put('/api/users/:id/managed-divisions', authMiddleware, requireRole('admin'), (req, res) => {
+        const { id } = req.params;
+        const { division_ids } = req.body;
+
+        // Remove all existing assignments
+        db.run(`DELETE FROM manager_divisions WHERE manager_id = ?`, [id], function (err) {
+            if (err) return res.status(500).json({ error: err.message });
+
+            // Insert new assignments
+            if (Array.isArray(division_ids) && division_ids.length > 0) {
+                const insertMany = division_ids.map(divId =>
+                    new Promise((resolve, reject) => {
+                        db.run(`INSERT OR IGNORE INTO manager_divisions (manager_id, division_id) VALUES (?, ?)`, [id, divId], function (err) {
+                            if (err) return reject(err);
+                            resolve();
+                        });
+                    })
+                );
+                Promise.all(insertMany)
+                    .then(() => res.json({ id, message: 'Managed divisions updated' }))
+                    .catch(err => res.status(500).json({ error: err.message }));
+            } else {
+                res.json({ id, message: 'Managed divisions updated' });
+            }
+        });
+    });
+
+    // ===== DIVISION ROUTES (Admin only) =====
+    app.get('/api/divisions', authMiddleware, requireRole('admin', 'manager', 'user', 'corporate'), (req, res) => {
+        db.all(`SELECT * FROM divisions ORDER BY name ASC`, [], (err, rows) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json(rows);
+        });
+    });
+
+    app.post('/api/divisions', authMiddleware, requireRole('admin'), (req, res) => {
+        const { name, description } = req.body;
+        if (!name) return res.status(400).json({ error: 'Division name is required' });
+
+        db.run(`INSERT INTO divisions (name, description) VALUES (?, ?)`, [name, description || ''], function (err) {
+            if (err) {
+                if (err.message.includes('UNIQUE') || err.message.includes('unique')) {
+                    return res.status(409).json({ error: 'Division name already exists' });
+                }
+                return res.status(500).json({ error: err.message });
+            }
+            res.status(201).json({ id: this.lastID, message: 'Division created successfully' });
+        });
+    });
+
+    app.put('/api/divisions/:id', authMiddleware, requireRole('admin'), (req, res) => {
+        const { id } = req.params;
+        const { name, description } = req.body;
+        if (!name) return res.status(400).json({ error: 'Division name is required' });
+
+        db.run(`UPDATE divisions SET name = ?, description = ? WHERE id = ?`, [name, description || '', id], function (err) {
+            if (err) return res.status(500).json({ error: err.message });
+            if (this.changes === 0) return res.status(404).json({ error: 'Division not found' });
+            res.json({ id, message: 'Division updated successfully' });
+        });
+    });
+
+    app.delete('/api/divisions/:id', authMiddleware, requireRole('admin'), (req, res) => {
+        const { id } = req.params;
+
+        // Check if division is in use
+        db.get(`SELECT id FROM users WHERE division_id = ? LIMIT 1`, [id], (err, row) => {
+            if (err) return res.status(500).json({ error: err.message });
+            if (row) return res.status(409).json({ error: 'Division is assigned to users. Reassign them first.' });
+
+            db.run(`DELETE FROM divisions WHERE id = ?`, [id], function (err) {
+                if (err) return res.status(500).json({ error: err.message });
+                if (this.changes === 0) return res.status(404).json({ error: 'Division not found' });
+                res.json({ message: 'Division deleted successfully' });
+            });
         });
     });
 }

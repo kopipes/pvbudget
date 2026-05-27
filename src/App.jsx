@@ -1,1099 +1,882 @@
-import { useState, Fragment } from 'react';
-import { Plus, Trash2, PlusCircle, Save, FileDown, FilePlus, Search, X, AlertTriangle, LogOut, Shield } from 'lucide-react';
+import { useState, Fragment, useEffect } from 'react';
+import { Plus, Trash2, PlusCircle, Save, FileDown, FilePlus, Search, X, AlertTriangle, LogOut, Shield, Building2, Send, Check, RefreshCw, Clock, CheckCircle, XCircle, History, Eye, LayoutDashboard } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import UserManagement from './UserManagement.jsx';
+import DivisionManagement from './DivisionManagement.jsx';
+import Dashboard from './Dashboard.jsx';
 import './App.css';
 
-const API = 'http://localhost:3001';
+const API = import.meta.env.VITE_API_URL || '';
 
-// Helper to format currency
-const formatCurrency = (amount) => {
-  if (amount === undefined || amount === null || isNaN(amount)) return '';
-  return amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+const STATUS = {
+    DRAFT: 'draft',
+    PENDING: 'pending',
+    REVISION: 'revision',
+    APPROVED: 'approved'
 };
 
-// Helper to clean string for parsing
+const STATUS_LABELS = {
+    draft: 'Draft',
+    pending: 'Pending Approval',
+    revision: 'Needs Revision',
+    approved: 'Approved'
+};
+
+const formatCurrency = (amount) => {
+    if (amount === undefined || amount === null || isNaN(amount)) return '';
+    return amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+};
+
 const parseCurrency = (str) => {
-  if (typeof str === 'number') return str;
-  if (!str) return 0;
-  const cleaned = str.replace(/\./g, '');
-  const parsed = parseInt(cleaned, 10);
-  return isNaN(parsed) ? 0 : parsed;
+    if (typeof str === 'number') return str;
+    if (!str) return 0;
+    const cleaned = str.replace(/\./g, '');
+    const parsed = parseInt(cleaned, 10);
+    return isNaN(parsed) ? 0 : parsed;
 };
 
 function App({ user, token, onLogout }) {
-  const [activeTab, setActiveTab] = useState('budget'); // 'budget' or 'realisasi'
+    const [activeTab, setActiveTab] = useState('budget');
 
-  const [eventData, setEventData] = useState({
-    projectNo: '',
-    name: '',
-    venue: '',
-    periode: '',
-    periodeStart: '',
-    periodeEnd: '',
-    managementFeePercent: 10,
-    note: '',
-    creatorName: user.display_name
-  });
+    const [eventData, setEventData] = useState({
+        projectNo: '',
+        name: '',
+        venue: '',
+        periode: '',
+        periodeStart: '',
+        periodeEnd: '',
+        managementFeePercent: 10,
+        note: '',
+        creatorName: user.display_name,
+        divisionId: user.division_id || ''
+    });
 
-  const [items, setItems] = useState([
-    {
-      id: 'm1',
-      name: 'NEW SECTION',
-      subs: []
-    }
-  ]);
+    const [items, setItems] = useState([{ id: 'm1', name: 'NEW SECTION', subs: [] }]);
+    const [currentFormId, setCurrentFormId] = useState(null);
+    const [currentStatus, setCurrentStatus] = useState(STATUS.DRAFT);
+    const [currentVersion, setCurrentVersion] = useState(1);
+    const [showLoadModal, setShowLoadModal] = useState(false);
+    const [modalMode, setModalMode] = useState('load');
+    const [searchTerm, setSearchTerm] = useState('');
+    const [formList, setFormList] = useState([]);
+    const [showUserMgmt, setShowUserMgmt] = useState(false);
+    const [showDivisionMgmt, setShowDivisionMgmt] = useState(false);
+    const [dialogConfig, setDialogConfig] = useState(null);
+    const [showDashboard, setShowDashboard] = useState(true);
+    const [openedFormId, setOpenedFormId] = useState(null);
+    const [showVersionHistory, setShowVersionHistory] = useState(false);
+    const [versionHistory, setVersionHistory] = useState([]);
+    const [pendingApprovals, setPendingApprovals] = useState([]);
+    const [myForms, setMyForms] = useState([]);
+    const [selectedDivisionId, setSelectedDivisionId] = useState(user.division_id || '');
+    const [divisions, setDivisions] = useState([]);
+    const [isReadOnly, setIsReadOnly] = useState(false);
 
-  const [parentFormId, setParentFormId] = useState(null);
-  const [currentFormId, setCurrentFormId] = useState(null);
-  const [showLoadModal, setShowLoadModal] = useState(false);
-  const [modalMode, setModalMode] = useState('load');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [formList, setFormList] = useState([]);
-  const [isReadOnly, setIsReadOnly] = useState(false); // when manager views subordinate's form
-  const [showUserMgmt, setShowUserMgmt] = useState(false);
+    const authHeaders = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+    };
 
-  const [dialogConfig, setDialogConfig] = useState(null);
+    const isAdmin = user.role === 'admin';
+    const isCorporate = user.role === 'corporate';
+    const isManager = user.role === 'manager';
+    const isUser = user.role === 'user';
+    const canEdit = !isReadOnly && !isCorporate && [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus);
+    const canSubmit = [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus) && (currentStatus !== STATUS.REVISION || currentFormId);
+    const canApprove = isAdmin || isCorporate;
+    const canDelete = isAdmin && [STATUS.DRAFT, STATUS.REVISION, 'archived'].includes(currentStatus);
 
-  // Auth header helper
-  const authHeaders = {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${token}`
-  };
+    useEffect(() => {
+        fetchDivisions();
+        if (isCorporate || isAdmin) fetchPendingApprovals();
+        fetchMyForms();
+    }, []);
 
-  // Role checks
-  const isAdmin = user.role === 'admin';
-  const isManager = user.role === 'manager';
-  const isUser = user.role === 'user';
-  const canEdit = !isReadOnly; // can edit if not in read-only mode
-  const canDelete = isAdmin; // only admin can delete
+    const fetchDivisions = async () => {
+        try {
+            const res = await fetch(`${API}/api/divisions`, { headers: authHeaders });
+            if (res.ok) setDivisions(await res.json());
+        } catch (e) { console.error(e); }
+    };
 
-  const showDialog = (type, message, title = '') => {
-    return new Promise((resolve) => {
-      setDialogConfig({
-        type,
-        message,
-        title,
-        onConfirm: (val) => {
-          setDialogConfig(null);
-          resolve(val !== undefined ? val : true);
-        },
-        onCancel: () => {
-          setDialogConfig(null);
-          resolve(type === 'prompt' ? null : false);
+    const fetchPendingApprovals = async () => {
+        try {
+            const res = await fetch(`${API}/api/forms/pending`, { headers: authHeaders });
+            if (res.ok) setPendingApprovals(await res.json());
+        } catch (e) { console.error(e); }
+    };
+
+    const fetchMyForms = async () => {
+        try {
+            const res = await fetch(`${API}/api/forms/my`, { headers: authHeaders });
+            if (res.ok) setMyForms(await res.json());
+        } catch (e) { console.error(e); }
+    };
+
+    const fetchVersionHistory = async (formId) => {
+        try {
+            const res = await fetch(`${API}/api/forms/${formId}/history`, { headers: authHeaders });
+            if (res.ok) setVersionHistory(await res.json());
+        } catch (e) { console.error(e); }
+    };
+
+    const showDialog = (type, message, title = '') => {
+        return new Promise((resolve) => {
+            setDialogConfig({ type, message, title,
+                onConfirm: (val) => { setDialogConfig(null); resolve(val !== undefined ? val : true); },
+                onCancel: () => { setDialogConfig(null); resolve(type === 'prompt' ? null : false); }
+            });
+        });
+    };
+
+    const generateId = () => Math.random().toString(36).substr(2, 9);
+
+    // --- Item handlers ---
+    const addMainItem = () => { if (!canEdit) return; setItems([...items, { id: generateId(), name: 'NEW ITEM', subs: [] }]); };
+    const removeMainItem = (mainId) => { if (!canEdit) return; setItems(items.filter(item => item.id !== mainId)); };
+    const updateMainItemName = (mainId, name) => { if (!canEdit) return; setItems(items.map(item => item.id === mainId ? { ...item, name } : item)); };
+    const addSubItem = (mainId) => {
+        if (!canEdit) return;
+        setItems(items.map(item => {
+            if (item.id === mainId) return { ...item, subs: [...item.subs, { id: generateId(), name: 'New Sub Item', qty: 1, mdy: 1, internalRate: 0, rate: 0, actualRate: 0 }] };
+            return item;
+        }));
+    };
+    const removeSubItem = (mainId, subId) => { if (!canEdit) return; setItems(items.map(item => item.id === mainId ? { ...item, subs: item.subs.filter(sub => sub.id !== subId) } : item)); };
+    const updateSubItem = (mainId, subId, field, value) => {
+        if (!canEdit) return;
+        setItems(items.map(item => {
+            if (item.id === mainId) return { ...item, subs: item.subs.map(sub => sub.id === subId ? { ...sub, [field]: value } : sub) };
+            return item;
+        }));
+    };
+
+    // --- Calculations ---
+    let subtotalInternal = 0, subtotalBudget = 0, subtotalRealisasi = 0;
+    items.forEach(item => { item.subs.forEach(sub => { subtotalInternal += (sub.qty * sub.mdy * sub.internalRate); subtotalBudget += (sub.qty * sub.mdy * sub.rate); subtotalRealisasi += (sub.actualRate || 0); }); });
+    const mgmtPct = parseFloat(eventData.managementFeePercent) || 0;
+    const managementFee = subtotalBudget * (mgmtPct / 100);
+    const totalInternal = subtotalInternal;
+    const totalBudget = subtotalBudget + managementFee;
+    const ppn = totalBudget * 0.11;
+    const grandTotalInternal = totalInternal;
+    const grandTotalBudget = totalBudget + ppn;
+    const grandTotalRealisasi = subtotalRealisasi;
+    const afterPpn = totalBudget;
+    const pph = totalBudget * 0.02;
+    const afterPph = afterPpn - pph;
+    const profitLoss = afterPph - grandTotalInternal;
+    const profitLossRealisasi = grandTotalRealisasi - grandTotalInternal;
+
+    // --- Form actions ---
+    const handleNewForm = async () => {
+        const confirmed = await showDialog('confirm', 'Start a new form? Unsaved changes will be lost.', 'New Form');
+        if (confirmed) {
+            resetFormState();
+            setCurrentStatus(STATUS.DRAFT);
+            setCurrentVersion(1);
+            setShowDashboard(false);
         }
-      });
-    });
-  };
+    };
 
-  // Generators for unique ids
-  const generateId = () => Math.random().toString(36).substr(2, 9);
-
-  // State Handlers
-  const addMainItem = () => {
-    if (!canEdit) return;
-    setItems([
-      ...items,
-      { id: generateId(), name: 'NEW ITEM', subs: [] }
-    ]);
-  };
-
-  const removeMainItem = (mainId) => {
-    if (!canEdit) return;
-    setItems(items.filter(item => item.id !== mainId));
-  };
-
-  const updateMainItemName = (mainId, name) => {
-    if (!canEdit) return;
-    setItems(items.map(item => item.id === mainId ? { ...item, name } : item));
-  };
-
-  const addSubItem = (mainId) => {
-    if (!canEdit) return;
-    setItems(items.map(item => {
-      if (item.id === mainId) {
-        return {
-          ...item,
-          subs: [
-            ...item.subs,
-            { id: generateId(), name: 'New Sub Item', qty: 1, mdy: 1, internalRate: 0, rate: 0, actualRate: 0 }
-          ]
-        };
-      }
-      return item;
-    }));
-  };
-
-  const removeSubItem = (mainId, subId) => {
-    if (!canEdit) return;
-    setItems(items.map(item => {
-      if (item.id === mainId) {
-        return { ...item, subs: item.subs.filter(sub => sub.id !== subId) };
-      }
-      return item;
-    }));
-  };
-
-  const updateSubItem = (mainId, subId, field, value) => {
-    if (!canEdit) return;
-    setItems(items.map(item => {
-      if (item.id === mainId) {
-        return {
-          ...item,
-          subs: item.subs.map(sub => {
-            if (sub.id === subId) {
-              return { ...sub, [field]: value };
-            }
-            return sub;
-          })
-        };
-      }
-      return item;
-    }));
-  };
-
-  // Calculations
-  let subtotalInternal = 0;
-  let subtotalBudget = 0;
-  let subtotalRealisasi = 0;
-
-  items.forEach(item => {
-    item.subs.forEach(sub => {
-      subtotalInternal += (sub.qty * sub.mdy * sub.internalRate);
-      subtotalBudget += (sub.qty * sub.mdy * sub.rate);
-      subtotalRealisasi += (sub.actualRate || 0);
-    });
-  });
-
-  const mgmtPct = parseFloat(eventData.managementFeePercent) || 0;
-  const managementFee = subtotalBudget * (mgmtPct / 100);
-  const totalInternal = subtotalInternal;
-  const totalBudget = subtotalBudget + managementFee;
-
-  const ppn = totalBudget * 0.11;
-
-  const grandTotalInternal = totalInternal;
-  const grandTotalBudget = totalBudget + ppn;
-  const grandTotalRealisasi = subtotalRealisasi;
-
-  const afterPpn = totalBudget;
-  const pph = totalBudget * 0.02;
-  const afterPph = afterPpn - pph;
-  const profitLoss = afterPph - grandTotalInternal;
-  const profitLossRealisasi = grandTotalRealisasi - grandTotalInternal;
-
-  // Top Action Handlers
-  const handleNewForm = async () => {
-    if (activeTab === 'realisasi') {
-      const confirmed = await showDialog('confirm', 'Select a Budget Form to create a Realisasi from? Unsaved changes will be lost.', 'Confirm New Form');
-      if (confirmed) {
-        setModalMode('new-realisasi');
-        setShowLoadModal(true);
-        fetchForms(searchTerm, 'budget');
-      }
-    } else {
-      const confirmed = await showDialog('confirm', 'Are you sure you want to start a new form? Unsaved changes will be lost.', 'Confirm New Form');
-      if (confirmed) {
-        setEventData({ projectNo: '', name: '', venue: '', periode: '', periodeStart: '', periodeEnd: '', managementFeePercent: 10, note: '', creatorName: user.display_name });
+    const resetFormState = () => {
+        setEventData({ projectNo: '', name: '', venue: '', periode: '', periodeStart: '', periodeEnd: '', managementFeePercent: 10, note: '', creatorName: user.display_name, divisionId: user.division_id || '' });
         setItems([{ id: generateId(), name: 'NEW SECTION', subs: [] }]);
         setCurrentFormId(null);
-        setParentFormId(null);
+        setCurrentStatus(STATUS.DRAFT);
+        setCurrentVersion(1);
         setIsReadOnly(false);
-      }
-    }
-  };
+        setSelectedDivisionId(user.division_id || '');
+        setOpenedFormId(null);
+    };
 
-  const handleSaveForm = async () => {
-    if (!canEdit) return;
+    const handleSaveForm = async () => {
+        if (!canEdit) return;
+        try {
+            const dataToSave = {
+                project_no: eventData.projectNo, event: eventData.name, venue: eventData.venue,
+                periode: eventData.periode, periode_start: eventData.periodeStart, periode_end: eventData.periodeEnd,
+                management_fee_pct: eventData.managementFeePercent, note: eventData.note,
+                division_id: selectedDivisionId || null, data: items
+            };
+            let url = `${API}/api/forms`;
+            let method = 'POST';
+            if (currentFormId) { url = `${API}/api/forms/${currentFormId}`; method = 'PUT'; }
 
-    try {
-      const dataToSave = {
-        form_type: activeTab,
-        parent_id: activeTab === 'realisasi' ? parentFormId : null,
-        project_no: eventData.projectNo,
-        event: eventData.name,
-        venue: eventData.venue,
-        periode: eventData.periode,
-        periode_start: eventData.periodeStart,
-        periode_end: eventData.periodeEnd,
-        management_fee_pct: eventData.managementFeePercent,
-        note: eventData.note,
-        data: items
-      };
-
-      let url = `${API}/api/forms`;
-      let method = 'POST';
-
-      if (currentFormId) {
-        url = `${API}/api/forms/${currentFormId}`;
-        method = 'PUT';
-      }
-
-      const response = await fetch(url, {
-        method,
-        headers: authHeaders,
-        body: JSON.stringify(dataToSave)
-      });
-
-      if (response.status === 401) {
-        await showDialog('alert', 'Session expired. Please login again.', 'Session Expired');
-        onLogout();
-        return;
-      }
-
-      if (response.status === 403) {
-        await showDialog('alert', 'You do not have permission to save this form.', 'Access Denied');
-        return;
-      }
-
-      if (!response.ok) throw new Error('Save failed');
-
-      const result = await response.json();
-      if (!currentFormId && result.id) {
-        setCurrentFormId(result.id);
-      }
-
-      await showDialog('alert', 'Form saved successfully to Database!', 'Success');
-    } catch (error) {
-      console.error(error);
-      await showDialog('alert', 'Failed to save to Database', 'Error');
-    }
-  };
-
-  const handleDeleteForm = async () => {
-    if (!currentFormId || !canDelete) return;
-
-    const confirmed = await showDialog('confirm', 'Are you sure you want to delete this form? This action cannot be undone.', 'Delete Form');
-    if (!confirmed) return;
-
-    try {
-      const response = await fetch(`${API}/api/forms/${currentFormId}`, {
-        method: 'DELETE',
-        headers: authHeaders
-      });
-
-      if (response.status === 401) {
-        await showDialog('alert', 'Session expired. Please login again.', 'Session Expired');
-        onLogout();
-        return;
-      }
-
-      if (response.status === 403) {
-        await showDialog('alert', 'Only admins can delete forms.', 'Access Denied');
-        return;
-      }
-
-      if (!response.ok) throw new Error('Delete failed');
-
-      await showDialog('alert', 'Form deleted successfully!', 'Success');
-      setEventData({ projectNo: '', name: '', venue: '', periode: '', periodeStart: '', periodeEnd: '', managementFeePercent: 10, note: '', creatorName: user.display_name });
-      setItems([{ id: generateId(), name: 'NEW SECTION', subs: [] }]);
-      setCurrentFormId(null);
-      setParentFormId(null);
-      setIsReadOnly(false);
-    } catch (error) {
-      console.error(error);
-      await showDialog('alert', 'Failed to delete form', 'Error');
-    }
-  };
-
-  const fetchForms = async (query = '', typeFilter = activeTab) => {
-    try {
-      const res = await fetch(`${API}/api/forms?query=${encodeURIComponent(query)}&type=${typeFilter}`, {
-        headers: authHeaders
-      });
-      if (res.status === 401) {
-        onLogout();
-        return;
-      }
-      if (res.ok) {
-        const data = await res.json();
-        setFormList(data);
-      }
-    } catch (e) {
-      console.error('Failed to search forms', e);
-    }
-  };
-
-  const openLoadModal = async () => {
-    const confirmed = await showDialog('confirm', `Apakah Anda sudah menyimpan form ${activeTab} ini sebelumnya? Segala perubahan yang belum tersimpan akan hilang. Lanjutkan memuat form lain?`, 'Confirm Load Form');
-    if (confirmed) {
-      setModalMode('load');
-      setShowLoadModal(true);
-      fetchForms(searchTerm, activeTab);
-    }
-  };
-
-  const handleLoadForm = async (id, isNewRealisasiTemplate = false) => {
-    try {
-      const res = await fetch(`${API}/api/forms/${id}`, {
-        headers: authHeaders
-      });
-      if (res.status === 401) {
-        onLogout();
-        return;
-      }
-      if (res.ok) {
-        let form = await res.json();
-
-        if (isNewRealisasiTemplate) {
-          setParentFormId(form.id);
-          setCurrentFormId(null);
-          setIsReadOnly(false); // creating new realisasi = editable
-        } else {
-          setCurrentFormId(form.id);
-          setParentFormId(form.parent_id);
-          setIsReadOnly(form.readonly || false);
+            const response = await fetch(url, { method, headers: authHeaders, body: JSON.stringify(dataToSave) });
+            if (response.status === 403) { await showDialog('alert', 'Only draft or revision forms can be edited', 'Access Denied'); return; }
+            if (!response.ok) throw new Error('Save failed');
+            const result = await response.json();
+            if (!currentFormId && result.id) setCurrentFormId(result.id);
+            setCurrentStatus(STATUS.DRAFT);
+            await showDialog('alert', 'Form saved successfully!', 'Success');
+        } catch (error) {
+            console.error(error);
+            await showDialog('alert', 'Failed to save form', 'Error');
         }
+    };
 
-        setEventData({
-          projectNo: form.project_no || '',
-          name: isNewRealisasiTemplate ? `${form.event || ''} - Realisasi` : (form.event || ''),
-          venue: form.venue || '',
-          periode: form.periode || '',
-          periodeStart: form.periode_start || '',
-          periodeEnd: form.periode_end || '',
-          managementFeePercent: form.management_fee_pct != null ? form.management_fee_pct : 10,
-          note: form.note || '',
-          creatorName: isNewRealisasiTemplate ? user.display_name : (form.creator_name || 'Unknown User')
+    const handleSubmitForm = async () => {
+        if (!canEdit && currentStatus === STATUS.DRAFT) {
+            await showDialog('alert', 'Please save the form before submitting.', 'Save First');
+            return;
+        }
+        if (!currentFormId) { await showDialog('alert', 'Please save the form first.', 'Save First'); return; }
+        const confirmed = await showDialog('confirm', 'Submit this form for corporate approval? You cannot edit it after submission.', 'Submit for Approval');
+        if (!confirmed) return;
+
+        try {
+            const res = await fetch(`${API}/api/forms/${currentFormId}/submit`, { method: 'POST', headers: authHeaders });
+            const data = await res.json();
+            if (!res.ok) { await showDialog('alert', data.error || 'Failed to submit', 'Error'); return; }
+            setCurrentStatus(STATUS.PENDING);
+            await showDialog('alert', 'Form submitted for approval!', 'Submitted');
+        } catch (e) { await showDialog('alert', 'Failed to submit form', 'Error'); }
+    };
+
+    const handleApproveForm = async () => {
+        const note = await showDialog('prompt', 'Add approval note (optional):', 'Approve Form');
+        try {
+            const res = await fetch(`${API}/api/forms/${currentFormId}/approve`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ note: note || '' }) });
+            const data = await res.json();
+            if (!res.ok) { await showDialog('alert', data.error || 'Failed to approve', 'Error'); return; }
+            setCurrentStatus(STATUS.APPROVED);
+            fetchPendingApprovals();
+            await showDialog('alert', 'Form approved!', 'Approved');
+        } catch (e) { await showDialog('alert', 'Failed to approve', 'Error'); }
+    };
+
+    const handleRejectForm = async () => {
+        const note = await showDialog('prompt', 'Enter revision note (required):\n\nExplain what needs to be revised:', 'Send Back for Revision');
+        if (!note || !note.trim()) { await showDialog('alert', 'Revision note is required to reject a form.', 'Required'); return; }
+        try {
+            const res = await fetch(`${API}/api/forms/${currentFormId}/reject`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ note }) });
+            const data = await res.json();
+            if (!res.ok) { await showDialog('alert', data.error || 'Failed to reject', 'Error'); return; }
+            // New revision form was created
+            const newId = data.id;
+            await showDialog('alert', `Form sent back for revision. Version ${(currentVersion + 1)} created.`, 'Revision Sent');
+            // Load the new revision
+            loadForm(newId);
+            fetchPendingApprovals();
+        } catch (e) { await showDialog('alert', 'Failed to reject', 'Error'); }
+    };
+
+    const handleUnlockForm = async () => {
+        const confirmed = await showDialog('confirm', 'Unlock this approved form for revision? The current approved version will be archived.', 'Unlock Approved Form');
+        if (!confirmed) return;
+        try {
+            const res = await fetch(`${API}/api/forms/${currentFormId}/unlock`, { method: 'PUT', headers: authHeaders });
+            const data = await res.json();
+            if (!res.ok) { await showDialog('alert', data.error || 'Failed', 'Error'); return; }
+            setCurrentStatus(STATUS.REVISION);
+            setCurrentVersion(currentVersion + 1);
+            await showDialog('alert', 'Approved form unlocked back to revision. Please edit and re-submit.', 'Unlocked');
+        } catch (e) { await showDialog('alert', 'Failed', 'Error'); }
+    };
+
+    const handleDeleteForm = async () => {
+        if (!currentFormId || !canDelete) return;
+        const confirmed = await showDialog('confirm', 'Delete this form? This cannot be undone.', 'Delete Form');
+        if (!confirmed) return;
+        try {
+            const res = await fetch(`${API}/api/forms/${currentFormId}`, { method: 'DELETE', headers: authHeaders });
+            if (!res.ok) { const d = await res.json(); await showDialog('alert', d.error || 'Failed', 'Error'); return; }
+            await showDialog('alert', 'Form deleted!', 'Deleted');
+            resetFormState();
+        } catch (e) { await showDialog('alert', 'Failed to delete', 'Error'); }
+    };
+
+    const fetchForms = async (query = '', typeFilter = activeTab) => {
+        try {
+            const res = await fetch(`${API}/api/forms?query=${encodeURIComponent(query)}&type=${typeFilter}`, { headers: authHeaders });
+            if (res.status === 401) { onLogout(); return; }
+            if (res.ok) setFormList(await res.json());
+        } catch (e) { console.error(e); }
+    };
+
+    const openLoadModal = async () => {
+        const confirmed = await showDialog('confirm', 'Unsaved changes will be lost. Continue?', 'Load Form');
+        if (confirmed) { setModalMode('load'); setShowLoadModal(true); fetchForms(searchTerm, activeTab); }
+    };
+
+    const loadForm = async (id) => {
+        // If id is null, just open a fresh form
+        if (id === null || id === undefined) {
+            resetFormState();
+            setCurrentStatus(STATUS.DRAFT);
+            setCurrentVersion(1);
+            setShowDashboard(false);
+            setOpenedFormId(null);
+            return;
+        }
+        try {
+            const res = await fetch(`${API}/api/forms/${id}`, { headers: authHeaders });
+            if (res.status === 401) { onLogout(); return; }
+            if (res.ok) {
+                const form = await res.json();
+                setCurrentFormId(form.id);
+                setCurrentStatus(form.status);
+                setCurrentVersion(form.version_number || 1);
+                setIsReadOnly(form.readonly || false);
+                setEventData({
+                    projectNo: form.project_no || '', name: form.event || '', venue: form.venue || '',
+                    periode: form.periode || '', periodeStart: form.periode_start || '', periodeEnd: form.periode_end || '',
+                    managementFeePercent: form.management_fee_pct != null ? form.management_fee_pct : 10,
+                    note: form.note || '', creatorName: form.creator_name || 'Unknown',
+                    divisionId: form.division_id || ''
+                });
+                setSelectedDivisionId(form.division_id || '');
+                if (form.data && Array.isArray(form.data)) setItems(form.data);
+                setShowLoadModal(false);
+                setShowVersionHistory(false);
+                setShowDashboard(false);
+                setOpenedFormId(id);
+            }
+        } catch (e) { await showDialog('alert', 'Failed to load form', 'Error'); }
+    };
+
+    const loadPendingForm = (id) => {
+        loadForm(id);
+    };
+
+    // --- Excel Export ---
+    const handleExportExcel = () => {
+        const wsData = [];
+        const displayPeriode = eventData.periodeStart && eventData.periodeEnd ? `${eventData.periodeStart} to ${eventData.periodeEnd}` : eventData.periode;
+        const acctFormat = '#,##0.00';
+
+        wsData.push([`PROJECT NO.`, eventData.projectNo]);
+        wsData.push([`EVENT`, eventData.name]);
+        wsData.push([`VENUE`, eventData.venue]);
+        wsData.push([`PERIODE`, displayPeriode]);
+        wsData.push([`MANAGEMENT FEE`, `${mgmtPct}%`]);
+        wsData.push([`VERSION`, `v${currentVersion}`]);
+        wsData.push([`STATUS`, STATUS_LABELS[currentStatus] || currentStatus]);
+        wsData.push([]);
+
+        const headerRow = ['DESCRIPTION', 'QTY', 'MDY', 'INTERNAL BUDGET', 'BUDGET'];
+        if (activeTab === 'realisasi') headerRow.push('REALISASI');
+        wsData.push(headerRow);
+
+        let currentRowIdx = 10;
+        const internalSubRows = [], budgetSubRows = [], realizedSubRows = [];
+
+        items.forEach(main => {
+            const mainRow = [main.name, '', '', '', ''];
+            if (activeTab === 'realisasi') mainRow.push('');
+            wsData.push(mainRow);
+            currentRowIdx++;
+
+            main.subs.forEach(sub => {
+                currentRowIdx++;
+                const rowNum = currentRowIdx;
+                subRow = [`   ${sub.name}`, { v: sub.qty, t: 'n' }, { v: sub.mdy, t: 'n' },
+                    { v: sub.qty * sub.mdy * sub.internalRate, t: 'n', z: acctFormat },
+                    { v: sub.qty * sub.mdy * sub.rate, t: 'n', z: acctFormat }];
+                internalSubRows.push(`D${rowNum}`);
+                budgetSubRows.push(`E${rowNum}`);
+                if (activeTab === 'realisasi') { subRow.push({ v: sub.actualRate || 0, t: 'n', z: acctFormat }); realizedSubRows.push(`F${rowNum}`); }
+                wsData.push(subRow);
+            });
         });
-        if (form.data && Array.isArray(form.data)) {
-          if (isNewRealisasiTemplate) {
-            const cleanedData = form.data.map(m => ({
-              ...m,
-              subs: m.subs.map(s => ({ ...s, actualRate: 0 }))
-            }));
-            setItems(cleanedData);
-          } else {
-            setItems(form.data);
-          }
-        }
-        setShowLoadModal(false);
-      }
-    } catch (e) {
-      console.error('Failed to load form', e);
-      await showDialog('alert', 'Failed to load form details', 'Error');
-    }
-  };
 
-  const handleExportExcel = () => {
-    const wsData = [];
+        wsData.push([]); currentRowIdx++;
+        const sumSub = (arr) => arr.length > 0 ? arr.join('+') : '0';
+        currentRowIdx++; const subtotalRow = currentRowIdx;
+        let rowSubtotal = ['SUBTOTAL', '', ''];
+        rowSubtotal.push({ v: subtotalInternal, f: sumSub(internalSubRows), t: 'n', z: acctFormat });
+        rowSubtotal.push({ v: subtotalBudget, f: sumSub(budgetSubRows), t: 'n', z: acctFormat });
+        if (activeTab === 'realisasi') rowSubtotal.push({ v: subtotalRealisasi, f: sumSub(realizedSubRows), t: 'n', z: acctFormat });
+        wsData.push(rowSubtotal);
 
-    const displayPeriode = eventData.periodeStart && eventData.periodeEnd
-      ? `${eventData.periodeStart} to ${eventData.periodeEnd}`
-      : eventData.periode;
+        currentRowIdx++; const mgmtRow = currentRowIdx;
+        let rowMgmt = [`MANAGEMENT FEE (${mgmtPct}%)`, '', ''];
+        rowMgmt.push(''); rowMgmt.push({ v: managementFee, f: `E${subtotalRow}*${mgmtPct / 100}`, t: 'n', z: acctFormat });
+        if (activeTab === 'realisasi') rowMgmt.push('');
+        wsData.push(rowMgmt);
 
-    const acctFormat = '#,##0.00';
+        currentRowIdx++; const totalRow = currentRowIdx;
+        let rowTotal = ['TOTAL', '', ''];
+        rowTotal.push({ v: totalInternal, f: `D${subtotalRow}`, t: 'n', z: acctFormat });
+        rowTotal.push({ v: totalBudget, f: `E${subtotalRow}+E${mgmtRow}`, t: 'n', z: acctFormat });
+        if (activeTab === 'realisasi') rowTotal.push('');
+        wsData.push(rowTotal);
 
-    wsData.push([`PROJECT NO.`, eventData.projectNo]);
-    wsData.push([`EVENT`, eventData.name]);
-    wsData.push([`VENUE`, eventData.venue]);
-    wsData.push([`PERIODE`, displayPeriode]);
-    wsData.push([`MANAGEMENT FEE`, `${mgmtPct}%`]);
-    wsData.push([]);
+        currentRowIdx++; const ppnRow = currentRowIdx;
+        let rowPPN = ['PPN (11%)', '', ''];
+        rowPPN.push(''); rowPPN.push({ v: ppn, f: `E${totalRow}*0.11`, t: 'n', z: acctFormat });
+        if (activeTab === 'realisasi') rowPPN.push('');
+        wsData.push(rowPPN);
 
-    const headerRow = ['DESCRIPTION', 'QTY', 'MDY', 'INTERNAL BUDGET', 'BUDGET'];
-    if (activeTab === 'realisasi') headerRow.push('REALISASI');
-    wsData.push(headerRow);
+        currentRowIdx++; const grandRow = currentRowIdx;
+        let rowGrand = ['GRAND TOTAL', '', ''];
+        rowGrand.push({ v: grandTotalInternal, f: `D${totalRow}`, t: 'n', z: acctFormat });
+        rowGrand.push({ v: grandTotalBudget, f: `E${totalRow}+E${ppnRow}`, t: 'n', z: acctFormat });
+        if (activeTab === 'realisasi') rowGrand.push({ v: grandTotalRealisasi, f: `F${subtotalRow}`, t: 'n', z: acctFormat });
+        wsData.push(rowGrand);
 
-    let currentRowIdx = 7;
-
-    const internalSubRows = [];
-    const budgetSubRows = [];
-    const realisasiSubRows = [];
-
-    items.forEach(main => {
-      const mainRow = [main.name, '', '', '', ''];
-      if (activeTab === 'realisasi') mainRow.push('');
-      wsData.push(mainRow);
-      currentRowIdx++;
-
-      main.subs.forEach(sub => {
+        wsData.push([]); currentRowIdx++;
+        wsData.push(['', '', '', 'Submitted Budget', { v: grandTotalBudget, f: `E${grandRow}`, t: 'n', z: acctFormat }]);
+        currentRowIdx++; const afterPpnRow = currentRowIdx;
+        wsData.push(['', '', '', 'After PPN', { v: afterPpn, f: `E${totalRow}`, t: 'n', z: acctFormat }]);
+        currentRowIdx++; const afterPphRow = currentRowIdx;
+        wsData.push(['', '', '', 'After PPH', { v: afterPph, f: `E${afterPpnRow}-(E${totalRow}*0.02)`, t: 'n', z: acctFormat }]);
         currentRowIdx++;
-        const rowNum = currentRowIdx;
-
-        const realTot = sub.actualRate || 0;
-
-        const subRow = [
-          `   ${sub.name}`,
-          { v: sub.qty, t: 'n' },
-          { v: sub.mdy, t: 'n' },
-          { v: sub.internalRate, t: 'n', z: acctFormat },
-          { v: sub.rate, t: 'n', z: acctFormat },
-        ];
-
-        const internalF = `B${rowNum}*C${rowNum}*${sub.internalRate}`;
-        const budgetF = `B${rowNum}*C${rowNum}*${sub.rate}`;
-
-        subRow[3] = { v: sub.qty * sub.mdy * sub.internalRate, f: internalF, t: 'n', z: acctFormat };
-        subRow[4] = { v: sub.qty * sub.mdy * sub.rate, f: budgetF, t: 'n', z: acctFormat };
-
-        internalSubRows.push(`D${rowNum}`);
-        budgetSubRows.push(`E${rowNum}`);
+        wsData.push(['', '', '', 'P/L (Budget)', { v: profitLoss, f: `E${afterPphRow}-D${grandRow}`, t: 'n', z: acctFormat }]);
 
         if (activeTab === 'realisasi') {
-          subRow.push({ v: realTot, t: 'n', z: acctFormat });
-          realisasiSubRows.push(`F${rowNum}`);
+            wsData.push([]); currentRowIdx++;
+            currentRowIdx++; const actualRow = currentRowIdx;
+            wsData.push(['', '', '', 'Actual Budget (Realisasi)', { v: grandTotalRealisasi, f: `F${grandRow}`, t: 'n', z: acctFormat }]);
+            currentRowIdx++;
+            wsData.push(['', '', '', 'P/L (Realisasi)', { v: profitLossRealisasi, f: `E${actualRow}-D${grandRow}`, t: 'n', z: acctFormat }]);
         }
-        wsData.push(subRow);
-      });
-    });
 
-    wsData.push([]);
-    currentRowIdx++;
+        if (eventData.note) { wsData.push([]); wsData.push(['NOTES:']); eventData.note.split('\n').forEach(line => wsData.push([line])); }
 
-    const sumSub = (arr) => arr.length > 0 ? arr.join('+') : '0';
+        const ws = XLSX.utils.aoa_to_sheet(wsData);
+        const cols = [{ wch: 35 }, { wch: 10 }, { wch: 10 }, { wch: 20 }, { wch: 20 }];
+        if (activeTab === 'realisasi') cols.push({ wch: 20 });
+        ws['!cols'] = cols;
 
-    currentRowIdx++;
-    const subtotalRow = currentRowIdx;
-    const rowSubtotal = ['SUBTOTAL', '', ''];
-    rowSubtotal.push({ v: subtotalInternal, f: sumSub(internalSubRows), t: 'n', z: acctFormat });
-    rowSubtotal.push({ v: subtotalBudget, f: sumSub(budgetSubRows), t: 'n', z: acctFormat });
-    if (activeTab === 'realisasi') rowSubtotal.push({ v: subtotalRealisasi, f: sumSub(realisasiSubRows), t: 'n', z: acctFormat });
-    wsData.push(rowSubtotal);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Budget");
+        XLSX.writeFile(wb, `Budget_Form_v${currentVersion}.xlsx`);
+    };
 
-    currentRowIdx++;
-    const mgmtRow = currentRowIdx;
-    const rowMgmt = [`MANAGEMENT FEE (${mgmtPct}%)`, '', ''];
-    rowMgmt.push('');
-    rowMgmt.push({ v: managementFee, f: `E${subtotalRow}*${mgmtPct / 100}`, t: 'n', z: acctFormat });
-    if (activeTab === 'realisasi') rowMgmt.push('');
-    wsData.push(rowMgmt);
+    const roleBadge = (role) => {
+        const labels = { admin: 'Admin', corporate: 'Corporate', manager: 'Manager', user: 'User' };
+        return <span className={`role-badge role-${role}`}>{labels[role] || role}</span>;
+    };
 
-    currentRowIdx++;
-    const totalRow = currentRowIdx;
-    const rowTotal = ['TOTAL', '', ''];
-    rowTotal.push({ v: totalInternal, f: `D${subtotalRow}`, t: 'n', z: acctFormat });
-    rowTotal.push({ v: totalBudget, f: `E${subtotalRow}+E${mgmtRow}`, t: 'n', z: acctFormat });
-    if (activeTab === 'realisasi') rowTotal.push('');
-    wsData.push(rowTotal);
+    const statusBadge = (status) => {
+        const styles = {
+            draft: { background: 'rgba(100,116,139,0.12)', color: '#64748B', border: '1px solid rgba(100,116,139,0.25)' },
+            pending: { background: 'rgba(234,179,8,0.12)', color: '#CA8A04', border: '1px solid rgba(234,179,8,0.25)' },
+            revision: { background: 'rgba(239,68,68,0.12)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.25)' },
+            approved: { background: 'rgba(34,197,94,0.12)', color: '#16a34a', border: '1px solid rgba(34,197,94,0.25)' },
+            archived: { background: 'rgba(148,163,184,0.12)', color: '#94a3b8', border: '1px solid rgba(148,163,184,0.25)' }
+        };
+        const s = styles[status] || styles.draft;
+        return <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', ...s }}>
+            {status === 'approved' && <CheckCircle size={12} />}
+            {status === 'pending' && <Clock size={12} />}
+            {status === 'revision' && <XCircle size={12} />}
+            {status === 'draft' && <FilePlus size={12} />}
+            {STATUS_LABELS[status] || status}
+        </span>;
+    };
 
-    currentRowIdx++;
-    const ppnRow = currentRowIdx;
-    const rowPPN = ['PPN (11%)', '', ''];
-    rowPPN.push('');
-    rowPPN.push({ v: ppn, f: `E${totalRow}*0.11`, t: 'n', z: acctFormat });
-    if (activeTab === 'realisasi') rowPPN.push('');
-    wsData.push(rowPPN);
-
-    currentRowIdx++;
-    const grandRow = currentRowIdx;
-    const rowGrand = ['GRAND TOTAL', '', ''];
-    rowGrand.push({ v: grandTotalInternal, f: `D${totalRow}`, t: 'n', z: acctFormat });
-    rowGrand.push({ v: grandTotalBudget, f: `E${totalRow}+E${ppnRow}`, t: 'n', z: acctFormat });
-    if (activeTab === 'realisasi') {
-      rowGrand.push({ v: grandTotalRealisasi, f: `F${subtotalRow}`, t: 'n', z: acctFormat });
-    }
-    wsData.push(rowGrand);
-
-    wsData.push([]);
-    currentRowIdx++;
-
-    currentRowIdx++;
-    wsData.push(['', '', '', 'Submitted Budget', { v: grandTotalBudget, f: `E${grandRow}`, t: 'n', z: acctFormat }]);
-
-    currentRowIdx++;
-    const afterPpnRow = currentRowIdx;
-    wsData.push(['', '', '', 'After PPN', { v: afterPpn, f: `E${totalRow}`, t: 'n', z: acctFormat }]);
-
-    currentRowIdx++;
-    const afterPphRow = currentRowIdx;
-    wsData.push(['', '', '', 'After PPH', { v: afterPph, f: `E${afterPpnRow}-(E${totalRow}*0.02)`, t: 'n', z: acctFormat }]);
-
-    currentRowIdx++;
-    wsData.push(['', '', '', 'P/L (Budget)', { v: profitLoss, f: `E${afterPphRow}-D${grandRow}`, t: 'n', z: acctFormat }]);
-
-    if (activeTab === 'realisasi') {
-      wsData.push([]);
-      currentRowIdx++;
-
-      currentRowIdx++;
-      const actualRow = currentRowIdx;
-      wsData.push(['', '', '', 'Actual Budget (Realisasi)', { v: grandTotalRealisasi, f: `F${grandRow}`, t: 'n', z: acctFormat }]);
-
-      currentRowIdx++;
-      wsData.push(['', '', '', 'P/L (Realisasi)', { v: profitLossRealisasi, f: `E${actualRow}-D${grandRow}`, t: 'n', z: acctFormat }]);
-    }
-
-    wsData.push([]);
-
-    if (eventData.note) {
-      wsData.push(['NOTES:']);
-      const noteLines = eventData.note.split('\n');
-      noteLines.forEach(line => {
-        wsData.push([line]);
-      });
-    }
-
-    const ws = XLSX.utils.aoa_to_sheet(wsData);
-
-    const cols = [{ wch: 35 }, { wch: 10 }, { wch: 10 }, { wch: 20 }, { wch: 20 }];
-    if (activeTab === 'realisasi') cols.push({ wch: 20 });
-    ws['!cols'] = cols;
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Budget");
-
-    XLSX.writeFile(wb, "Budget_Form_Export.xlsx");
-  };
-
-  // Role badge helper
-  const roleBadge = (role) => {
-    const labels = { admin: 'Admin', manager: 'Manager', user: 'User' };
-    return <span className={`role-badge role-${role}`}>{labels[role] || role}</span>;
-  };
-
-  return (
-    <div className="app-container">
-      {/* USER INFO BAR */}
-      <div className="user-bar">
-        <div className="user-bar-info">
-          <div className="user-avatar">{user.display_name?.charAt(0)?.toUpperCase() || 'U'}</div>
-          <div>
-            <span className="user-bar-name">{user.display_name}</span>
-            {roleBadge(user.role)}
-          </div>
-        </div>
-        <div className="user-bar-actions">
-          {isAdmin && (
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowUserMgmt(true)}>
-              <Shield size={14} /> Users
-            </button>
-          )}
-          <button className="btn btn-secondary btn-sm" onClick={onLogout}>
-            <LogOut size={14} /> Logout
-          </button>
-        </div>
-      </div>
-
-      {/* READ-ONLY BANNER */}
-      {isReadOnly && (
-        <div className="readonly-banner">
-          <AlertTriangle size={16} />
-          <span>You are viewing this form in <strong>read-only</strong> mode. Only the form owner can edit.</span>
-        </div>
-      )}
-
-      {/* APP TITLE & TABS */}
-      <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-        <h1 style={{ fontWeight: '800', letterSpacing: '4px', color: 'var(--primary)', textTransform: 'uppercase', margin: 0 }}>
-          {activeTab === 'budget' ? 'BUDGET' : 'REALISASI'}
-        </h1>
-        <div style={{ display: 'inline-flex', marginTop: '1rem', background: 'var(--surface)', borderRadius: '8px', padding: '4px', boxShadow: 'var(--shadow-sm)' }}>
-          <button
-            className={`btn btn-sm ${activeTab === 'budget' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ border: 'none', boxShadow: 'none' }}
-            onClick={async () => {
-              const confirmed = await showDialog('confirm', "Switching tabs will discard unsaved changes. Switch?", "Confirm Switch");
-              if (confirmed) {
-                setActiveTab('budget');
-                setEventData({ projectNo: '', name: '', venue: '', periode: '', periodeStart: '', periodeEnd: '', managementFeePercent: 10, note: '', creatorName: user.display_name });
-                setItems([{ id: generateId(), name: 'NEW SECTION', subs: [] }]);
-                setCurrentFormId(null);
-                setParentFormId(null);
-                setIsReadOnly(false);
-              }
-            }}>
-            BUDGET
-          </button>
-          <button
-            className={`btn btn-sm ${activeTab === 'realisasi' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ border: 'none', boxShadow: 'none' }}
-            onClick={async () => {
-              const confirmed = await showDialog('confirm', "Switching tabs will discard unsaved changes. Switch?", "Confirm Switch");
-              if (confirmed) {
-                setActiveTab('realisasi');
-                setEventData({ projectNo: '', name: '', venue: '', periode: '', periodeStart: '', periodeEnd: '', managementFeePercent: 10, note: '', creatorName: user.display_name });
-                setItems([{ id: generateId(), name: 'NEW SECTION', subs: [] }]);
-                setCurrentFormId(null);
-                setParentFormId(null);
-                setIsReadOnly(false);
-                setModalMode('new-realisasi');
-                setShowLoadModal(true);
-                fetchForms(searchTerm, 'budget');
-              }
-            }}>
-            REALISASI
-          </button>
-        </div>
-      </div>
-
-      {/* TOP ACTION BAR */}
-      <div className="top-action-bar">
-        <button className="btn btn-secondary btn-sm" onClick={handleNewForm}>
-          <FilePlus size={16} /> New Form
-        </button>
-        <button className="btn btn-secondary btn-sm" onClick={openLoadModal}>
-          <Search size={16} /> Load Form
-        </button>
-        {canEdit && (
-          <button className="btn btn-secondary btn-sm" onClick={handleSaveForm}>
-            <Save size={16} /> Save Form
-          </button>
-        )}
-        <button className="btn btn-success btn-sm" onClick={handleExportExcel}>
-          <FileDown size={16} /> Export to XLS
-        </button>
-
-        {/* Delete Button (Only admin and if a form is loaded) */}
-        {canDelete && currentFormId && (
-          <button
-            className="btn btn-sm"
-            style={{
-              background: '#ef4444',
-              color: 'white',
-              marginLeft: 'auto',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem'
-            }}
-            onClick={handleDeleteForm}
-          >
-            <AlertTriangle size={16} /> Delete Form
-          </button>
-        )}
-      </div>
-
-      <div style={{ padding: '0 1rem', display: 'flex', justifyContent: 'flex-end' }}>
-        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', background: 'var(--surface)', padding: '4px 12px', borderRadius: '12px', border: '1px solid var(--border)' }}>
-          Form Owner: <strong style={{ color: 'var(--text-main)' }}>{eventData.creatorName}</strong>
-        </span>
-      </div>
-
-      {/* HEADER SECTION */}
-      <div className="document-header" style={{ marginTop: '0.5rem' }}>
-        <div className="input-group">
-          <label>Project No</label>
-          <input
-            type="text"
-            value={eventData.projectNo}
-            onChange={(e) => setEventData({ ...eventData, projectNo: e.target.value })}
-            placeholder="Project Number"
-            disabled={isReadOnly}
-          />
-        </div>
-        <div className="input-group">
-          <label>Event</label>
-          <input
-            type="text"
-            value={eventData.name}
-            onChange={(e) => setEventData({ ...eventData, name: e.target.value })}
-            placeholder="Event Name"
-            disabled={isReadOnly}
-          />
-        </div>
-        <div className="input-group">
-          <label>Venue</label>
-          <input
-            type="text"
-            value={eventData.venue}
-            onChange={(e) => setEventData({ ...eventData, venue: e.target.value })}
-            placeholder="Event Venue"
-            disabled={isReadOnly}
-          />
-        </div>
-        <div className="input-group">
-          <label>Periode Dates</label>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <input
-              type="date"
-              style={{ flex: 1 }}
-              value={eventData.periodeStart}
-              onChange={(e) => setEventData({ ...eventData, periodeStart: e.target.value })}
-              disabled={isReadOnly}
-            />
-            <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>to</span>
-            <input
-              type="date"
-              style={{ flex: 1 }}
-              value={eventData.periodeEnd}
-              onChange={(e) => setEventData({ ...eventData, periodeEnd: e.target.value })}
-              disabled={isReadOnly}
-            />
-          </div>
-          {eventData.periode && !eventData.periodeStart && !eventData.periodeEnd && (
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              Legacy text: {eventData.periode}
-            </div>
-          )}
-        </div>
-        <div className="input-group">
-          <label>Management Fee (%)</label>
-          <input
-            type="number"
-            min="0"
-            max="100"
-            step="0.5"
-            value={eventData.managementFeePercent}
-            onChange={(e) => setEventData({ ...eventData, managementFeePercent: parseFloat(e.target.value) || 0 })}
-            placeholder="10"
-            disabled={isReadOnly}
-            style={{ maxWidth: '120px' }}
-          />
-        </div>
-      </div>
-
-      {/* DATA GRID */}
-      <div className="grid-container">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th className="col-desc">Description</th>
-              <th className="col-qty">QTY</th>
-              <th className="col-mdy">MDY</th>
-              <th className="col-internal">Internal Budget</th>
-              <th className="col-budget">Budget</th>
-              {activeTab === 'realisasi' && <th className="col-realisasi">Realisasi</th>}
-              <th className="col-actions"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((mainItem) => (
-              <Fragment key={mainItem.id}>
-                {/* Main Item Row */}
-                <tr className="row-main-item">
-                  <td>
-                    <input
-                      type="text"
-                      className="cell-input"
-                      value={mainItem.name}
-                      onChange={(e) => updateMainItemName(mainItem.id, e.target.value)}
-                      style={{ fontWeight: 700 }}
-                      disabled={isReadOnly}
-                    />
-                  </td>
-                  <td></td>
-                  <td></td>
-                  <td></td>
-                  <td></td>
-                  {activeTab === 'realisasi' && <td></td>}
-                  <td className="col-actions" style={{ display: 'flex', gap: '4px' }}>
-                    {canEdit && (
-                      <>
-                        <button className="btn-icon btn-add-sub" title="Add Sub Item" onClick={() => addSubItem(mainItem.id)}>
-                          <PlusCircle size={18} />
-                        </button>
-                        <button className="btn-icon" title="Remove Main Item" onClick={() => removeMainItem(mainItem.id)}>
-                          <Trash2 size={18} />
-                        </button>
-                      </>
+    return (
+        <div className="app-container">
+            {/* DASHBOARD VIEW */}
+            {showDashboard ? (
+                <Dashboard user={user} token={token} onLogout={onLogout} onOpenForm={(id) => { loadForm(id); }} />
+            ) : (
+            <>
+            {/* USER INFO BAR */}
+            <div className="user-bar">
+                <div className="user-bar-info">
+                    <div className="user-avatar">{user.display_name?.charAt(0)?.toUpperCase() || 'U'}</div>
+                    <div>
+                        <span className="user-bar-name">{user.display_name}</span>
+                        {roleBadge(user.role)}
+                        {user.division_name && <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: '4px' }}>• {user.division_name}</span>}
+                    </div>
+                </div>
+                <div className="user-bar-actions">
+                    <button className="btn btn-secondary btn-sm" onClick={() => setShowDashboard(true)}>
+                        <LayoutDashboard size={14} /> Dashboard
+                    </button>
+                    {(isAdmin || isCorporate) && pendingApprovals.length > 0 && (
+                        <span style={{ background: '#ef4444', color: '#fff', borderRadius: '12px', padding: '2px 10px', fontSize: '0.75rem', fontWeight: 700 }}>
+                            {pendingApprovals.length} pending
+                        </span>
                     )}
-                  </td>
-                </tr>
+                    {isAdmin && (
+                        <>
+                            <button className="btn btn-secondary btn-sm" onClick={() => setShowDivisionMgmt(true)}><Building2 size={14} /> Divisions</button>
+                            <button className="btn btn-secondary btn-sm" onClick={() => setShowUserMgmt(true)}><Shield size={14} /> Users</button>
+                        </>
+                    )}
+                    <button className="btn btn-secondary btn-sm" onClick={onLogout}><LogOut size={14} /> Logout</button>
+                </div>
+            </div>
 
-                {/* Sub Items Rows */}
-                {mainItem.subs.map((sub) => {
-                  const rowTotalInternal = sub.qty * sub.mdy * sub.internalRate;
-                  const rowTotalBudget = sub.qty * sub.mdy * sub.rate;
-
-                  return (
-                    <tr className="row-sub-item" key={sub.id}>
-                      <td>
-                        <input
-                          type="text"
-                          className="cell-input"
-                          value={sub.name}
-                          onChange={(e) => updateSubItem(mainItem.id, sub.id, 'name', e.target.value)}
-                          style={{ paddingLeft: '2rem' }}
-                          disabled={isReadOnly}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          className="cell-input align-center"
-                          value={sub.qty}
-                          onChange={(e) => updateSubItem(mainItem.id, sub.id, 'qty', parseFloat(e.target.value) || 0)}
-                          disabled={isReadOnly}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          className="cell-input align-center"
-                          value={sub.mdy}
-                          onChange={(e) => updateSubItem(mainItem.id, sub.id, 'mdy', parseFloat(e.target.value) || 0)}
-                          disabled={isReadOnly}
-                        />
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 0.5rem' }}>
-                          <input
-                            type="text"
-                            className="cell-input align-right"
-                            value={sub.internalRate === 0 ? '' : formatCurrency(sub.internalRate)}
-                            onChange={(e) => updateSubItem(mainItem.id, sub.id, 'internalRate', parseCurrency(e.target.value))}
-                            style={{ width: '45%' }}
-                            placeholder="Rate"
-                            disabled={isReadOnly}
-                          />
-                          <div className="cell-readonly align-right" style={{ width: '50%' }}>
-                            {formatCurrency(rowTotalInternal)}
-                          </div>
-                        </div>
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 0.5rem' }}>
-                          <input
-                            type="text"
-                            className="cell-input align-right"
-                            value={sub.rate === 0 ? '' : formatCurrency(sub.rate)}
-                            onChange={(e) => updateSubItem(mainItem.id, sub.id, 'rate', parseCurrency(e.target.value))}
-                            style={{ width: '45%' }}
-                            placeholder="Rate"
-                            disabled={isReadOnly}
-                          />
-                          <div className="cell-readonly align-right" style={{ width: '50%', fontWeight: 600 }}>
-                            {formatCurrency(rowTotalBudget)}
-                          </div>
-                        </div>
-                      </td>
-                      {activeTab === 'realisasi' && (
-                        <td style={{ background: 'rgba(234, 179, 8, 0.05)', padding: '0 0.5rem' }}>
-                          <input
-                            type="text"
-                            className="cell-input align-right"
-                            value={sub.actualRate === 0 ? '' : formatCurrency(sub.actualRate)}
-                            onChange={(e) => updateSubItem(mainItem.id, sub.id, 'actualRate', parseCurrency(e.target.value))}
-                            style={{ width: '100%', color: 'var(--primary)', fontWeight: 600 }}
-                            placeholder="Actual Total"
-                            disabled={isReadOnly}
-                          />
-                        </td>
-                      )}
-                      <td className="col-actions">
-                        {canEdit && (
-                          <button className="btn-icon" title="Remove Sub Item" onClick={() => removeSubItem(mainItem.id, sub.id)}>
-                            <Trash2 size={18} />
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </Fragment>
-            ))}
-
-            {/* Empty Spacer Row for aesthetics */}
-            <tr><td colSpan="6" style={{ height: '0.5rem' }}></td></tr>
-
-            {/* Add Main Item Button (Moved above Subtotal) */}
-            {canEdit && (
-              <tr>
-                <td colSpan="6" style={{ padding: '0.5rem 1rem', borderBottom: 'none' }}>
-                  <button className="btn btn-primary btn-sm" onClick={addMainItem}>
-                    <Plus size={16} /> Add Main Item
-                  </button>
-                </td>
-              </tr>
+            {/* READ-ONLY BANNER */}
+            {isReadOnly && currentStatus !== STATUS.APPROVED && (
+                <div className="readonly-banner">
+                    <AlertTriangle size={16} />
+                    <span>You are viewing in <strong>read-only</strong> mode. Only the form owner can edit.</span>
+                </div>
+            )}
+            {isReadOnly && currentStatus === STATUS.APPROVED && (
+                <div style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: '10px', padding: '0.75rem 1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#16a34a', fontSize: '0.875rem', fontWeight: 500 }}>
+                    <CheckCircle size={16} />
+                    <span>This form is <strong>APPROVED</strong> and locked.</span>
+                </div>
+            )}
+            {currentStatus === STATUS.REVISION && canEdit && (
+                <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '10px', padding: '0.75rem 1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#ef4444', fontSize: '0.875rem', fontWeight: 500 }}>
+                    <RefreshCw size={16} />
+                    <span>Form sent back for revision. Please revise and re-submit.</span>
+                </div>
+            )}
+            {currentStatus === STATUS.PENDING && (
+                <div style={{ background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.25)', borderRadius: '10px', padding: '0.75rem 1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#CA8A04', fontSize: '0.875rem', fontWeight: 500 }}>
+                    <Clock size={16} />
+                    <span>Form is <strong>pending approval</strong> from Corporate/Admin.</span>
+                </div>
             )}
 
-            {/* SUMMARY ROWS */}
-            <tr className="summary-row highlight">
-              <td colSpan="3" className="align-right">SUBTOTAL</td>
-              <td>{formatCurrency(subtotalInternal)}</td>
-              <td>{formatCurrency(subtotalBudget)}</td>
-              {activeTab === 'realisasi' && <td></td>}
-              <td></td>
-            </tr>
-            <tr className="summary-row">
-              <td colSpan="3" className="align-right">{`MANAGEMENT FEE (${mgmtPct}%)`}</td>
-              <td></td>
-              <td>{formatCurrency(managementFee)}</td>
-              {activeTab === 'realisasi' && <td></td>}
-              <td></td>
-            </tr>
-            <tr className="summary-row highlight">
-              <td colSpan="3" className="align-right">TOTAL</td>
-              <td>{formatCurrency(totalInternal)}</td>
-              <td>{formatCurrency(totalBudget)}</td>
-              {activeTab === 'realisasi' && <td></td>}
-              <td></td>
-            </tr>
-            <tr className="summary-row">
-              <td colSpan="3" className="align-right">PPN (11%)</td>
-              <td></td>
-              <td>{formatCurrency(ppn)}</td>
-              {activeTab === 'realisasi' && <td></td>}
-              <td></td>
-            </tr>
-            <tr className="summary-row highlight">
-              <td colSpan="3" className="align-right">GRAND TOTAL</td>
-              <td>{formatCurrency(grandTotalInternal)}</td>
-              <td>{formatCurrency(grandTotalBudget)}</td>
-              {activeTab === 'realisasi' && <td style={{ color: 'var(--primary)', fontWeight: '800' }}>{formatCurrency(grandTotalRealisasi)}</td>}
-              <td></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+            {/* APP TITLE & TABS */}
+            <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+                <h1 style={{ fontWeight: '800', letterSpacing: '4px', color: 'var(--primary)', textTransform: 'uppercase', margin: 0 }}>
+                    {activeTab === 'budget' ? 'BUDGET' : 'REALISASI'}
+                </h1>
+                <div style={{ display: 'inline-flex', marginTop: '1rem', background: 'var(--surface)', borderRadius: '8px', padding: '4px', boxShadow: 'var(--shadow-sm)' }}>
+                    <button className={`btn btn-sm ${activeTab === 'budget' ? 'btn-primary' : 'btn-secondary'}`} style={{ border: 'none', boxShadow: 'none' }} onClick={() => setActiveTab('budget')}>BUDGET</button>
+                    <button className={`btn btn-sm ${activeTab === 'realisasi' ? 'btn-primary' : 'btn-secondary'}`} style={{ border: 'none', boxShadow: 'none' }} onClick={() => setActiveTab('realisasi')}>REALISASI</button>
+                </div>
+            </div>
 
-      {/* METRICS & NOTES FOOTER */}
-      <div style={{ display: 'flex', gap: '2rem', marginTop: '2rem' }}>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          <label style={{ fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', fontSize: '0.875rem' }}>Notes</label>
-          <textarea
-            value={eventData.note}
-            onChange={(e) => setEventData({ ...eventData, note: e.target.value })}
-            placeholder="Add any additional notes or terms here..."
-            disabled={isReadOnly}
-            style={{
-              width: '100%',
-              minHeight: '150px',
-              padding: '1rem',
-              borderRadius: '12px',
-              border: '1px solid var(--border)',
-              background: isReadOnly ? 'var(--bg-color)' : 'var(--surface)',
-              fontFamily: 'inherit',
-              fontSize: '0.95rem',
-              resize: 'vertical',
-              boxShadow: 'var(--shadow-sm)'
-            }}
-          />
-        </div>
-
-        <div className="metrics-section" style={{ marginTop: 0, flexBasis: '400px' }}>
-          <div className="metric-line">
-            <span className="metric-label">Submitted Budget</span>
-            <span className="metric-value">{formatCurrency(grandTotalBudget)}</span>
-          </div>
-          <div className="metric-line">
-            <span className="metric-label">After PPN (Budget)</span>
-            <span className="metric-value">{formatCurrency(afterPpn)}</span>
-          </div>
-          <div className="metric-line">
-            <span className="metric-label">After PPH (Budget)</span>
-            <span className="metric-value">{formatCurrency(afterPph)}</span>
-          </div>
-          <div className="metric-line pl">
-            <span className="metric-label">P/L (Budget)</span>
-            <span className="metric-value" style={profitLoss < 0 ? { color: '#ef4444' } : {}}>
-              {formatCurrency(profitLoss)}
-            </span>
-          </div>
-
-          {activeTab === 'realisasi' && (
-            <>
-              <div style={{ height: '1px', background: 'var(--border)', margin: '1rem 0' }}></div>
-              <div className="metric-line">
-                <span className="metric-label" style={{ color: 'var(--primary)', fontWeight: 'bold' }}>Actual Budget (Realisasi)</span>
-                <span className="metric-value" style={{ color: 'var(--primary)', fontWeight: 'bold' }}>{formatCurrency(grandTotalRealisasi)}</span>
-              </div>
-              <div className="metric-line pl">
-                <span className="metric-label" style={{ color: 'var(--primary)', fontWeight: 'bold' }}>P/L (Realisasi)</span>
-                <span className="metric-value" style={{ color: profitLossRealisasi < 0 ? '#ef4444' : 'var(--primary)', fontWeight: 'bold' }}>
-                  {formatCurrency(profitLossRealisasi)}
-                </span>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* SEARCH/LOAD MODAL */}
-      {
-        showLoadModal && (
-          <div className="modal-overlay" onClick={() => setShowLoadModal(false)}>
-            <div className="modal-content" onClick={e => e.stopPropagation()}>
-              <div className="modal-header">
-                <h2>Load Form Database</h2>
-                <button onClick={() => setShowLoadModal(false)}><X size={24} /></button>
-              </div>
-
-              <div className="modal-search">
-                <input
-                  type="text"
-                  placeholder="Search by Event, Venue, or Date..."
-                  value={searchTerm}
-                  onChange={(e) => {
-                    setSearchTerm(e.target.value);
-                    fetchForms(e.target.value);
-                  }}
-                />
-                <button className="btn btn-primary" onClick={() => fetchForms(searchTerm)}>
-                  Search
-                </button>
-              </div>
-
-              <div className="form-list">
-                {formList.length === 0 ? (
-                  <div style={{ padding: '1rem', textAlign: 'center', color: '#64748B' }}>
-                    No forms found in database.
-                  </div>
-                ) : (
-                  formList.map(form => (
-                    <div key={form.id} className="form-item" onClick={() => handleLoadForm(form.id, modalMode === 'new-realisasi')}>
-                      <div className="form-item-info">
-                        <span className="form-item-title">{form.project_no ? `[${form.project_no}] ` : ''}{form.event || 'Untitled Event'}</span>
-                        <span className="form-item-date">{form.venue} | {form.periode_start && form.periode_end ? `${form.periode_start} to ${form.periode_end}` : form.periode} | Created by: {form.creator_name || 'Unknown User'}</span>
-                      </div>
-                    </div>
-                  ))
+            {/* TOP ACTION BAR */}
+            <div className="top-action-bar">
+                {!isCorporate && (
+                    <button className="btn btn-secondary btn-sm" onClick={handleNewForm}><FilePlus size={16} /> New Form</button>
                 )}
-              </div>
+                <button className="btn btn-secondary btn-sm" onClick={() => { setShowLoadModal(true); fetchForms('', activeTab); }}>
+                    <Search size={16} /> Load Form
+                </button>
+                {canEdit && (
+                    <button className="btn btn-secondary btn-sm" onClick={handleSaveForm}><Save size={16} /> Save</button>
+                )}
+                {canSubmit && currentFormId && (
+                    <button className="btn btn-primary btn-sm" onClick={handleSubmitForm} style={{ background: 'var(--primary)', color: '#000' }}>
+                        <Send size={16} /> Submit for Approval
+                    </button>
+                )}
+                {/* Corporate/Admin approval actions */}
+                {canApprove && currentStatus === STATUS.PENDING && currentFormId && (
+                    <>
+                        <button className="btn btn-sm" style={{ background: 'var(--success)', color: '#fff' }} onClick={handleApproveForm}>
+                            <Check size={16} /> Approve
+                        </button>
+                        <button className="btn btn-sm" style={{ background: '#ef4444', color: '#fff' }} onClick={handleRejectForm}>
+                            <X size={16} /> Reject / Revise
+                        </button>
+                    </>
+                )}
+                {/* Admin unlock approved */}
+                {isAdmin && currentStatus === STATUS.APPROVED && currentFormId && (
+                    <button className="btn btn-sm" style={{ background: '#8b5cf6', color: '#fff' }} onClick={handleUnlockForm}>
+                        <RefreshCw size={16} /> Unlock for Revision
+                    </button>
+                )}
+                <button className="btn btn-success btn-sm" onClick={handleExportExcel}><FileDown size={16} /> Export XLS</button>
+                {currentFormId && (
+                    <button className="btn btn-secondary btn-sm" onClick={() => { setShowVersionHistory(true); fetchVersionHistory(currentFormId); }} style={{ marginLeft: 'auto' }}>
+                        <History size={16} /> v{currentVersion}
+                    </button>
+                )}
+                {canDelete && currentFormId && (
+                    <button className="btn btn-sm" style={{ background: '#ef4444', color: '#fff' }} onClick={handleDeleteForm}><Trash2 size={16} /> Delete</button>
+                )}
             </div>
-          </div>
-        )
-      }
 
-      {/* CUSTOM DIALOG MODAL */}
-      {dialogConfig && (
-        <div className="modal-overlay" style={{ zIndex: 9999 }}>
-          <div className="modal-content" style={{ maxWidth: '400px' }}>
-            <div className="modal-header">
-              <h2>{dialogConfig.title || 'Notification'}</h2>
-              <button onClick={dialogConfig.onCancel}><X size={24} /></button>
+            {/* STATUS BAR */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 1rem', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                {currentFormId && (
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', background: 'var(--surface)', padding: '4px 12px', borderRadius: '12px', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {statusBadge(currentStatus)}
+                    {currentVersion > 1 && <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Rev-{currentVersion}</span>}
+                    <span>• Form Owner: <strong style={{ color: 'var(--text-main)' }}>{eventData.creatorName}</strong></span>
+                    {eventData.divisionId && divisions.find(d => d.id === parseInt(eventData.divisionId)) && (
+                        <span>• {divisions.find(d => d.id === parseInt(eventData.divisionId)).name}</span>
+                    )}
+                </span>
+                )}
+                {(isAdmin || isCorporate) && pendingApprovals.length > 0 && (
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#ef4444' }}>Pending Approvals:</span>
+                        {pendingApprovals.slice(0, 3).map(p => (
+                            <span key={p.id} style={{ background: 'rgba(234,179,8,0.12)', color: '#CA8A04', border: '1px solid rgba(234,179,8,0.25)', padding: '2px 8px', borderRadius: '8px', fontSize: '0.7rem', cursor: 'pointer' }} onClick={() => loadPendingForm(p.id)}>
+                                {p.event || 'Untitled'} v{p.version_number}
+                            </span>
+                        ))}
+                        {pendingApprovals.length > 3 && <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>+{pendingApprovals.length - 3} more</span>}
+                    </div>
+                )}
             </div>
-            <div style={{ padding: '1rem 0' }}>
-              <p>{dialogConfig.message}</p>
-              {dialogConfig.type === 'prompt' && (
-                <input
-                  type={dialogConfig.title.toLowerCase().includes('password') ? 'password' : 'text'}
-                  autoFocus
-                  style={{ width: '100%', marginTop: '1rem', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      dialogConfig.onConfirm(e.target.value);
-                    } else if (e.key === 'Escape') {
-                      dialogConfig.onCancel();
-                    }
-                  }}
-                  id="prompt-input-modal"
-                />
-              )}
+
+            {/* HEADER SECTION */}
+            <div className="document-header" style={{ marginTop: '0.5rem' }}>
+                {!isCorporate && (
+                    <div className="input-group">
+                        <label>Division</label>
+                        <select value={selectedDivisionId} onChange={e => setSelectedDivisionId(e.target.value)} disabled={!canEdit && currentStatus !== STATUS.DRAFT} style={{ padding: '0.75rem 1rem', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '1rem', background: 'var(--surface)' }}>
+                            <option value="">— Select Division —</option>
+                            {divisions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                        </select>
+                    </div>
+                )}
+                <div className="input-group">
+                    <label>Project No</label>
+                    <input type="text" value={eventData.projectNo} onChange={(e) => setEventData({ ...eventData, projectNo: e.target.value })} placeholder="Project Number" disabled={!canEdit} />
+                </div>
+                <div className="input-group">
+                    <label>Event</label>
+                    <input type="text" value={eventData.name} onChange={(e) => setEventData({ ...eventData, name: e.target.value })} placeholder="Event Name" disabled={!canEdit} />
+                </div>
+                <div className="input-group">
+                    <label>Venue</label>
+                    <input type="text" value={eventData.venue} onChange={(e) => setEventData({ ...eventData, venue: e.target.value })} placeholder="Event Venue" disabled={!canEdit} />
+                </div>
+                <div className="input-group">
+                    <label>Periode Dates</label>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <input type="date" style={{ flex: 1 }} value={eventData.periodeStart} onChange={(e) => setEventData({ ...eventData, periodeStart: e.target.value })} disabled={!canEdit} />
+                        <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>to</span>
+                        <input type="date" style={{ flex: 1 }} value={eventData.periodeEnd} onChange={(e) => setEventData({ ...eventData, periodeEnd: e.target.value })} disabled={!canEdit} />
+                    </div>
+                </div>
+                <div className="input-group">
+                    <label>Management Fee (%)</label>
+                    <input type="number" min="0" max="100" step="0.5" value={eventData.managementFeePercent} onChange={(e) => setEventData({ ...eventData, managementFeePercent: parseFloat(e.target.value) || 0 })} placeholder="10" disabled={!canEdit} style={{ maxWidth: '120px' }} />
+                </div>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem' }}>
-              {dialogConfig.type !== 'alert' && (
-                <button className="btn btn-secondary" onClick={dialogConfig.onCancel}>Cancel</button>
-              )}
-              <button
-                className="btn btn-primary"
-                onClick={() => {
-                  if (dialogConfig.type === 'prompt') {
-                    const el = document.getElementById('prompt-input-modal');
-                    dialogConfig.onConfirm(el ? el.value : '');
-                  } else {
-                    dialogConfig.onConfirm(true);
-                  }
-                }}
-              >
-                OK
-              </button>
+
+            {/* DATA GRID */}
+            <div className="grid-container">
+                <table className="data-table">
+                    <thead>
+                        <tr>
+                            <th className="col-desc">Description</th>
+                            <th className="col-qty">QTY</th>
+                            <th className="col-mdy">MDY</th>
+                            <th className="col-internal">Internal Budget</th>
+                            <th className="col-budget">Budget</th>
+                            {activeTab === 'realisasi' && <th className="col-realisasi">Realisasi</th>}
+                            <th className="col-actions"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {items.map((mainItem) => (
+                            <Fragment key={mainItem.id}>
+                                <tr className="row-main-item">
+                                    <td>
+                                        <input type="text" className="cell-input" value={mainItem.name} onChange={(e) => updateMainItemName(mainItem.id, e.target.value)} style={{ fontWeight: 700 }} disabled={!canEdit} />
+                                    </td>
+                                    <td></td><td></td><td></td><td></td>
+                                    {activeTab === 'realisasi' && <td></td>}
+                                    <td className="col-actions" style={{ display: 'flex', gap: '4px' }}>
+                                        {canEdit && (
+                                            <>
+                                                <button className="btn-icon btn-add-sub" title="Add Sub Item" onClick={() => addSubItem(mainItem.id)}><PlusCircle size={18} /></button>
+                                                <button className="btn-icon" title="Remove Main Item" onClick={() => removeMainItem(mainItem.id)}><Trash2 size={18} /></button>
+                                            </>
+                                        )}
+                                    </td>
+                                </tr>
+                                {mainItem.subs.map((sub) => {
+                                    const rowTotalInternal = sub.qty * sub.mdy * sub.internalRate;
+                                    const rowTotalBudget = sub.qty * sub.mdy * sub.rate;
+                                    return (
+                                        <tr className="row-sub-item" key={sub.id}>
+                                            <td><input type="text" className="cell-input" value={sub.name} onChange={(e) => updateSubItem(mainItem.id, sub.id, 'name', e.target.value)} style={{ paddingLeft: '2rem' }} disabled={!canEdit} /></td>
+                                            <td><input type="number" className="cell-input align-center" value={sub.qty} onChange={(e) => updateSubItem(mainItem.id, sub.id, 'qty', parseFloat(e.target.value) || 0)} disabled={!canEdit} /></td>
+                                            <td><input type="number" className="cell-input align-center" value={sub.mdy} onChange={(e) => updateSubItem(mainItem.id, sub.id, 'mdy', parseFloat(e.target.value) || 0)} disabled={!canEdit} /></td>
+                                            <td>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 0.5rem' }}>
+                                                    <input type="text" className="cell-input align-right" value={sub.internalRate === 0 ? '' : formatCurrency(sub.internalRate)} onChange={(e) => updateSubItem(mainItem.id, sub.id, 'internalRate', parseCurrency(e.target.value))} style={{ width: '45%' }} placeholder="Rate" disabled={!canEdit} />
+                                                    <div className="cell-readonly align-right" style={{ width: '50%' }}>{formatCurrency(rowTotalInternal)}</div>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 0.5rem' }}>
+                                                    <input type="text" className="cell-input align-right" value={sub.rate === 0 ? '' : formatCurrency(sub.rate)} onChange={(e) => updateSubItem(mainItem.id, sub.id, 'rate', parseCurrency(e.target.value))} style={{ width: '45%' }} placeholder="Rate" disabled={!canEdit} />
+                                                    <div className="cell-readonly align-right" style={{ width: '50%', fontWeight: 600 }}>{formatCurrency(rowTotalBudget)}</div>
+                                                </div>
+                                            </td>
+                                            {activeTab === 'realisasi' && (
+                                                <td style={{ background: 'rgba(234,179,8,0.05)', padding: '0 0.5rem' }}>
+                                                    <input type="text" className="cell-input align-right" value={sub.actualRate === 0 ? '' : formatCurrency(sub.actualRate)} onChange={(e) => updateSubItem(mainItem.id, sub.id, 'actualRate', parseCurrency(e.target.value))} style={{ width: '100%', color: 'var(--primary)', fontWeight: 600 }} placeholder="Actual Total" disabled={!canEdit} />
+                                                </td>
+                                            )}
+                                            <td className="col-actions">
+                                                {canEdit && <button className="btn-icon" title="Remove Sub Item" onClick={() => removeSubItem(mainItem.id, sub.id)}><Trash2 size={18} /></button>}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </Fragment>
+                        ))}
+                        <tr><td colSpan={activeTab === 'realisasi' ? 7 : 6} style={{ height: '0.5rem' }}></td></tr>
+                        {canEdit && (
+                            <tr>
+                                <td colSpan={activeTab === 'realisasi' ? 7 : 6} style={{ padding: '0.5rem 1rem', borderBottom: 'none' }}>
+                                    <button className="btn btn-primary btn-sm" onClick={addMainItem}><Plus size={16} /> Add Main Item</button>
+                                </td>
+                            </tr>
+                        )}
+                        <tr className="summary-row highlight">
+                            <td colSpan="3" className="align-right">SUBTOTAL</td>
+                            <td>{formatCurrency(subtotalInternal)}</td>
+                            <td>{formatCurrency(subtotalBudget)}</td>
+                            {activeTab === 'realisasi' && <td></td>}
+                            <td></td>
+                        </tr>
+                        <tr className="summary-row">
+                            <td colSpan="3" className="align-right">{`MANAGEMENT FEE (${mgmtPct}%)`}</td>
+                            <td></td><td>{formatCurrency(managementFee)}</td>
+                            {activeTab === 'realisasi' && <td></td>}<td></td>
+                        </tr>
+                        <tr className="summary-row highlight">
+                            <td colSpan="3" className="align-right">TOTAL</td>
+                            <td>{formatCurrency(totalInternal)}</td>
+                            <td>{formatCurrency(totalBudget)}</td>
+                            {activeTab === 'realisasi' && <td></td>}<td></td>
+                        </tr>
+                        <tr className="summary-row">
+                            <td colSpan="3" className="align-right">PPN (11%)</td>
+                            <td></td><td>{formatCurrency(ppn)}</td>
+                            {activeTab === 'realisasi' && <td></td>}<td></td>
+                        </tr>
+                        <tr className="summary-row highlight">
+                            <td colSpan="3" className="align-right">GRAND TOTAL</td>
+                            <td>{formatCurrency(grandTotalInternal)}</td>
+                            <td>{formatCurrency(grandTotalBudget)}</td>
+                            {activeTab === 'realisasi' && <td style={{ color: 'var(--primary)', fontWeight: '800' }}>{formatCurrency(grandTotalRealisasi)}</td>}
+                            <td></td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
-          </div>
+
+            {/* METRICS & NOTES FOOTER */}
+            <div style={{ display: 'flex', gap: '2rem', marginTop: '2rem' }}>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <label style={{ fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', fontSize: '0.875rem' }}>Notes</label>
+                    <textarea value={eventData.note} onChange={(e) => setEventData({ ...eventData, note: e.target.value })} placeholder="Add any additional notes or terms here..." disabled={!canEdit} style={{ width: '100%', minHeight: '150px', padding: '1rem', borderRadius: '12px', border: '1px solid var(--border)', background: !canEdit ? 'var(--bg-color)' : 'var(--surface)', fontFamily: 'inherit', fontSize: '0.95rem', resize: 'vertical', boxShadow: 'var(--shadow-sm)' }} />
+                </div>
+                <div className="metrics-section" style={{ marginTop: 0, flexBasis: '400px' }}>
+                    <div className="metric-line"><span className="metric-label">Submitted Budget</span><span className="metric-value">{formatCurrency(grandTotalBudget)}</span></div>
+                    <div className="metric-line"><span className="metric-label">After PPN (Budget)</span><span className="metric-value">{formatCurrency(afterPpn)}</span></div>
+                    <div className="metric-line"><span className="metric-label">After PPH (Budget)</span><span className="metric-value">{formatCurrency(afterPph)}</span></div>
+                    <div className="metric-line pl"><span className="metric-label">P/L (Budget)</span><span className="metric-value" style={profitLoss < 0 ? { color: '#ef4444' } : {}}>{formatCurrency(profitLoss)}</span></div>
+                    {activeTab === 'realisasi' && (
+                        <>
+                            <div style={{ height: '1px', background: 'var(--border)', margin: '1rem 0' }}></div>
+                            <div className="metric-line"><span className="metric-label" style={{ color: 'var(--primary)', fontWeight: 'bold' }}>Actual Budget (Realisasi)</span><span className="metric-value" style={{ color: 'var(--primary)', fontWeight: 'bold' }}>{formatCurrency(grandTotalRealisasi)}</span></div>
+                            <div className="metric-line pl"><span className="metric-label" style={{ color: 'var(--primary)', fontWeight: 'bold' }}>P/L (Realisasi)</span><span className="metric-value" style={{ color: profitLossRealisasi < 0 ? '#ef4444' : 'var(--primary)', fontWeight: 'bold' }}>{formatCurrency(profitLossRealisasi)}</span></div>
+                        </>
+                    )}
+                </div>
+            </div>
+
+            {/* LOAD FORM MODAL */}
+            {showLoadModal && (
+                <div className="modal-overlay" onClick={() => setShowLoadModal(false)}>
+                    <div className="modal-content" onClick={e => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h2><Search size={20} /> Load Form</h2>
+                            <button onClick={() => setShowLoadModal(false)}><X size={24} /></button>
+                        </div>
+                        <div className="modal-search">
+                            <input type="text" placeholder="Search by Event, Venue, Project..." value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); fetchForms(e.target.value); }} />
+                            <button className="btn btn-primary" onClick={() => fetchForms(searchTerm)}>Search</button>
+                        </div>
+                        <div className="form-list">
+                            {formList.length === 0 ? (
+                                <div style={{ padding: '1rem', textAlign: 'center', color: '#64748B' }}>No forms found.</div>
+                            ) : (
+                                formList.map(form => (
+                                    <div key={form.id} className="form-item" onClick={() => loadForm(form.id)}>
+                                        <div className="form-item-info">
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                <span className="form-item-title">{form.project_no ? `[${form.project_no}] ` : ''}{form.event || 'Untitled Event'}</span>
+                                                {statusBadge(form.status)}
+                                            </div>
+                                            <span className="form-item-date">
+                                                v{form.version_number || 1} • {form.venue} • {form.periode_start && form.periode_end ? `${form.periode_start} to ${form.periode_end}` : form.periode} • {form.creator_name || 'Unknown'}
+                                                {form.division_name && ` • ${form.division_name}`}
+                                            </span>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* VERSION HISTORY MODAL */}
+            {showVersionHistory && (
+                <div className="modal-overlay" onClick={() => setShowVersionHistory(false)}>
+                    <div className="modal-content" onClick={e => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h2><History size={20} /> Version History</h2>
+                            <button onClick={() => setShowVersionHistory(false)}><X size={24} /></button>
+                        </div>
+                        <div className="form-list">
+                            {versionHistory.map(v => (
+                                <div key={v.id} className="form-item" onClick={() => loadForm(v.id)} style={{ cursor: v.id === currentFormId ? 'default' : 'pointer', border: v.id === currentFormId ? '2px solid var(--primary)' : undefined }}>
+                                    <div className="form-item-info">
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                            <span className="form-item-title">Version {v.version_number || 1}</span>
+                                            {statusBadge(v.status)}
+                                            {v.id === currentFormId && <span style={{ fontSize: '0.7rem', color: 'var(--primary)', fontWeight: 700 }}>← Current</span>}
+                                        </div>
+                                        <span className="form-item-date">
+                                            {v.approved_at && `Approved: ${v.approved_at}`}
+                                            {v.revision_note && ` • Note: "${v.revision_note}"`}
+                                            {v.creator_name && ` • By: ${v.creator_name}`}
+                                        </span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* CUSTOM DIALOG MODAL */}
+            {dialogConfig && (
+                <div className="modal-overlay" style={{ zIndex: 9999 }}>
+                    <div className="modal-content" style={{ maxWidth: '450px' }}>
+                        <div className="modal-header">
+                            <h2>{dialogConfig.title || 'Notification'}</h2>
+                            <button onClick={dialogConfig.onCancel}><X size={24} /></button>
+                        </div>
+                        <div style={{ padding: '1rem 0' }}><p>{dialogConfig.message}</p>
+                            {dialogConfig.type === 'prompt' && (
+                                <input type="text" autoFocus style={{ width: '100%', marginTop: '1rem', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }}
+                                    onKeyDown={(e) => { if (e.key === 'Enter') { const el = document.getElementById('prompt-input-modal'); dialogConfig.onConfirm(el ? el.value : ''); } else if (e.key === 'Escape') dialogConfig.onCancel(); }}
+                                    id="prompt-input-modal"
+                                />
+                            )}
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem' }}>
+                            {dialogConfig.type !== 'alert' && <button className="btn btn-secondary" onClick={dialogConfig.onCancel}>Cancel</button>}
+                            <button className="btn btn-primary" onClick={() => {
+                                if (dialogConfig.type === 'prompt') { const el = document.getElementById('prompt-input-modal'); dialogConfig.onConfirm(el ? el.value : ''); }
+                                else dialogConfig.onConfirm(true);
+                            }}>OK</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* USER MANAGEMENT MODAL */}
+            {showUserMgmt && <UserManagement token={token} onClose={() => setShowUserMgmt(false)} />}
+
+            {/* DIVISION MANAGEMENT MODAL */}
+            {showDivisionMgmt && <DivisionManagement token={token} onClose={() => setShowDivisionMgmt(false)} />}
+            </>
+            )}
         </div>
-      )}
-
-      {/* USER MANAGEMENT MODAL */}
-      {showUserMgmt && (
-        <UserManagement
-          token={token}
-          onClose={() => setShowUserMgmt(false)}
-        />
-      )}
-
-    </div>
-  );
+    );
 }
 
 export default App;

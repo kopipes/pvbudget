@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Edit2, Save, Shield, Users, UserCheck } from 'lucide-react';
 
-const API = 'http://localhost:3001';
+const API = import.meta.env.VITE_API_URL || '';
 
 export default function UserManagement({ token, onClose }) {
     const [users, setUsers] = useState([]);
@@ -15,13 +15,17 @@ export default function UserManagement({ token, onClose }) {
         password: '',
         display_name: '',
         role: 'user',
-        manager_id: ''
+        manager_id: '',
+        division_id: '',
+        managedDivisions: []
     });
 
     const headers = {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
     };
+
+    const [divisions, setDivisions] = useState([]);
 
     const fetchUsers = async () => {
         try {
@@ -36,10 +40,22 @@ export default function UserManagement({ token, onClose }) {
         }
     };
 
-    useEffect(() => { fetchUsers(); }, []);
+    const fetchDivisions = async () => {
+        try {
+            const res = await fetch(`${API}/api/divisions`, { headers });
+            if (res.ok) {
+                const data = await res.json();
+                setDivisions(data);
+            }
+        } catch (e) {
+            console.error('Failed to load divisions');
+        }
+    };
+
+    useEffect(() => { fetchUsers(); fetchDivisions(); }, []);
 
     const resetForm = () => {
-        setForm({ username: '', password: '', display_name: '', role: 'user', manager_id: '' });
+        setForm({ username: '', password: '', display_name: '', role: 'user', manager_id: '', division_id: '', managedDivisions: [] });
         setEditingUser(null);
         setShowForm(false);
         setError('');
@@ -61,17 +77,26 @@ export default function UserManagement({ token, onClose }) {
         try {
             const body = { ...form };
             body.manager_id = body.manager_id ? parseInt(body.manager_id) : null;
+            body.division_id = body.division_id ? parseInt(body.division_id) : null;
             if (editingUser && !body.password) delete body.password;
-
+            // Send managedDivisions for managers
+            const managedDivisions = body.managedDivisions || [];
+            delete body.managedDivisions;
+    
             const url = editingUser ? `${API}/api/users/${editingUser.id}` : `${API}/api/users`;
             const method = editingUser ? 'PUT' : 'POST';
-
+    
             const res = await fetch(url, { method, headers, body: JSON.stringify(body) });
             const data = await res.json();
-
-            if (!res.ok) {
-                setError(data.error || 'Failed to save user');
-                return;
+            if (!res.ok) { setError(data.error || 'Failed to save user'); return; }
+    
+            // Save managed divisions for managers
+            if (body.role === 'manager' || editingUser?.role === 'manager') {
+                await fetch(`${API}/api/users/${editingUser.id}/managed-divisions`, {
+                    method: 'PUT',
+                    headers,
+                    body: JSON.stringify({ division_ids: managedDivisions })
+                });
             }
 
             setSuccess(editingUser ? 'User updated' : 'User created');
@@ -89,7 +114,9 @@ export default function UserManagement({ token, onClose }) {
             password: '',
             display_name: user.display_name,
             role: user.role,
-            manager_id: user.manager_id || ''
+            manager_id: user.manager_id || '',
+            division_id: user.division_id || '',
+            managedDivisions: user.managedDivisions || []
         });
         setEditingUser(user);
         setShowForm(true);
@@ -116,13 +143,18 @@ export default function UserManagement({ token, onClose }) {
         }
     };
 
-    const roleIcon = (role) => {
-        if (role === 'admin') return <Shield size={14} />;
-        if (role === 'manager') return <UserCheck size={14} />;
-        return <Users size={14} />;
+    const handleDivisionChange = (value) => {
+        setForm({ ...form, division_id: value });
     };
 
     const roleBadgeClass = (role) => `role-badge role-${role}`;
+
+    const roleIcon = (role) => {
+        if (role === 'admin') return <Shield size={14} />;
+        if (role === 'corporate') return <Shield size={14} />;
+        if (role === 'manager') return <UserCheck size={14} />;
+        return <Users size={14} />;
+    };
 
     return (
         <div className="modal-overlay" onClick={onClose}>
@@ -172,7 +204,17 @@ export default function UserManagement({ token, onClose }) {
                                 <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
                                     <option value="user">User</option>
                                     <option value="manager">Manager</option>
+                                    <option value="corporate">Corporate</option>
                                     <option value="admin">Admin</option>
+                                </select>
+                            </div>
+                            <div className="um-field">
+                                <label>Division</label>
+                                <select value={form.division_id} onChange={e => setForm({ ...form, division_id: e.target.value })}>
+                                    <option value="">— No Division —</option>
+                                    {divisions.map(d => (
+                                        <option key={d.id} value={d.id}>{d.name}</option>
+                                    ))}
                                 </select>
                             </div>
                             {form.role === 'user' && (
@@ -184,6 +226,28 @@ export default function UserManagement({ token, onClose }) {
                                             <option key={m.id} value={m.id}>{m.display_name} ({m.role})</option>
                                         ))}
                                     </select>
+                                </div>
+                            )}
+                            {form.role === 'manager' && (
+                                <div className="um-field" style={{ gridColumn: '1 / -1' }}>
+                                    <label>Managed Divisions</label>
+                                    <div className="um-checkbox-grid">
+                                        {divisions.map(d => (
+                                            <label key={d.id} className="um-checkbox-label">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={form.managedDivisions.includes(d.id)}
+                                                    onChange={e => {
+                                                        const ids = e.target.checked
+                                                            ? [...form.managedDivisions, d.id]
+                                                            : form.managedDivisions.filter(id => id !== d.id);
+                                                        setForm({ ...form, managedDivisions: ids });
+                                                    }}
+                                                />
+                                                {d.name}
+                                            </label>
+                                        ))}
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -208,6 +272,7 @@ export default function UserManagement({ token, onClose }) {
                                 <th>Name</th>
                                 <th>Username</th>
                                 <th>Role</th>
+                                <th>Division</th>
                                 <th>Manager</th>
                                 <th style={{ width: '80px' }}>Actions</th>
                             </tr>
@@ -218,6 +283,7 @@ export default function UserManagement({ token, onClose }) {
                                     <td className="um-name">{u.display_name}</td>
                                     <td className="um-username">{u.username}</td>
                                     <td><span className={roleBadgeClass(u.role)}>{roleIcon(u.role)} {u.role}</span></td>
+                                    <td className="um-manager">{u.division_name || '—'}</td>
                                     <td className="um-manager">{u.manager_name || '—'}</td>
                                     <td>
                                         <div className="um-actions">

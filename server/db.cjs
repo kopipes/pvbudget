@@ -12,6 +12,14 @@ const db = new sqlite3.Database(dbPath, (err) => {
         // Enable WAL mode for better concurrency
         db.run('PRAGMA journal_mode=WAL');
 
+        // Create divisions table
+        db.run(`CREATE TABLE IF NOT EXISTS divisions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+
         // Create forms table
         db.run(`CREATE TABLE IF NOT EXISTS forms (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -25,7 +33,17 @@ const db = new sqlite3.Database(dbPath, (err) => {
       periode_end TEXT,
       data TEXT,
       note TEXT,
+      status TEXT DEFAULT 'draft',
+      version_number INTEGER DEFAULT 1,
+      root_form_id INTEGER,
+      revision_note TEXT,
+      submitted_at DATETIME,
+      approved_at DATETIME,
+      approved_by INTEGER,
+      rejected_by INTEGER,
+      rejected_at DATETIME,
       created_by INTEGER,
+      division_id INTEGER,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
@@ -37,8 +55,10 @@ const db = new sqlite3.Database(dbPath, (err) => {
       password TEXT NOT NULL,
       display_name TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'user',
+      division_id INTEGER,
       manager_id INTEGER,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (division_id) REFERENCES divisions(id) ON DELETE SET NULL,
       FOREIGN KEY (manager_id) REFERENCES users(id) ON DELETE SET NULL
     )`);
 
@@ -50,15 +70,41 @@ const db = new sqlite3.Database(dbPath, (err) => {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )`);
 
-        // Add created_by column to forms if it doesn't exist
-        db.run(`ALTER TABLE forms ADD COLUMN created_by INTEGER`, (err) => {
-            // Ignore error if column already exists
-        });
+        // Create manager_divisions table (many-to-many: which divisions each manager manages)
+        db.run(`CREATE TABLE IF NOT EXISTS manager_divisions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      manager_id INTEGER NOT NULL,
+      division_id INTEGER NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (manager_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (division_id) REFERENCES divisions(id) ON DELETE CASCADE,
+      UNIQUE(manager_id, division_id)
+    )`);
 
-        // Add management_fee_pct column to forms if it doesn't exist
-        db.run(`ALTER TABLE forms ADD COLUMN management_fee_pct REAL DEFAULT 10`, (err) => {
-            // Ignore error if column already exists
-        });
+        // Create approval_history table (tracks every approve/reject action)
+        db.run(`CREATE TABLE IF NOT EXISTS approval_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      form_id INTEGER NOT NULL,
+      action TEXT NOT NULL,
+      note TEXT,
+      actor_id INTEGER NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (form_id) REFERENCES forms(id) ON DELETE CASCADE,
+      FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE CASCADE
+    )`);
+
+        // Add missing columns if they don't exist
+        db.run(`ALTER TABLE forms ADD COLUMN status TEXT DEFAULT 'draft'`, () => {});
+        db.run(`ALTER TABLE forms ADD COLUMN version_number INTEGER DEFAULT 1`, () => {});
+        db.run(`ALTER TABLE forms ADD COLUMN root_form_id INTEGER`, () => {});
+        db.run(`ALTER TABLE forms ADD COLUMN revision_note TEXT`, () => {});
+        db.run(`ALTER TABLE forms ADD COLUMN submitted_at DATETIME`, () => {});
+        db.run(`ALTER TABLE forms ADD COLUMN approved_at DATETIME`, () => {});
+        db.run(`ALTER TABLE forms ADD COLUMN approved_by INTEGER`, () => {});
+        db.run(`ALTER TABLE forms ADD COLUMN rejected_by INTEGER`, () => {});
+        db.run(`ALTER TABLE forms ADD COLUMN rejected_at DATETIME`, () => {});
+        db.run(`ALTER TABLE users ADD COLUMN division_id INTEGER`, () => {});
+        db.run(`ALTER TABLE forms ADD COLUMN division_id INTEGER`, () => {});
 
         // Seed default admin user if no users exist
         db.get('SELECT COUNT(*) as count FROM users', (err, row) => {
@@ -68,15 +114,46 @@ const db = new sqlite3.Database(dbPath, (err) => {
             }
             if (row.count === 0) {
                 const hash = bcrypt.hashSync('admin123', 10);
+                const hashCorp = bcrypt.hashSync('corp123', 10);
+                const hashMgr = bcrypt.hashSync('manager123', 10);
+                const hashUser = bcrypt.hashSync('user123', 10);
+
+                // Create default divisions
+                db.run(`INSERT INTO divisions (name, description) VALUES ('Finance', 'Finance and Accounting Division')`, () => {});
+                db.run(`INSERT INTO divisions (name, description) VALUES ('Marketing', 'Marketing and Communications Division')`, () => {});
+                db.run(`INSERT INTO divisions (name, description) VALUES ('Operations', 'Operations Division')`, () => {});
+                db.run(`INSERT INTO divisions (name, description) VALUES ('Human Resources', 'HR Division')`, () => {});
+
                 db.run(
                     `INSERT INTO users (username, password, display_name, role) VALUES (?, ?, ?, ?)`,
                     ['admin', hash, 'Administrator', 'admin'],
                     (err) => {
-                        if (err) {
-                            console.error('Error seeding admin user', err.message);
-                        } else {
-                            console.log('Default admin user created (admin / admin123)');
-                        }
+                        if (err) console.error('Error seeding admin user', err.message);
+                        else console.log('Default admin user created (admin / admin123)');
+                    }
+                );
+                db.run(
+                    `INSERT INTO users (username, password, display_name, role) VALUES (?, ?, ?, ?)`,
+                    ['corporate', hashCorp, 'Corporate Viewer', 'corporate'],
+                    (err) => {
+                        if (err) console.error('Error seeding corporate user', err.message);
+                        else console.log('Default corporate user created (corporate / corp123)');
+                    }
+                );
+                db.run(
+                    `INSERT INTO users (username, password, display_name, role) VALUES (?, ?, ?, ?)`,
+                    ['manager', hashMgr, 'Manager', 'manager'],
+                    (err) => {
+                        if (err) console.error('Error seeding manager user', err.message);
+                        else console.log('Default manager user created (manager / manager123)');
+                    }
+                );
+                db.run(
+                    `INSERT INTO users (username, password, display_name, role) VALUES (?, ?, ?, ?)`,
+                    ['user', hashUser, 'User', 'user'],
+                    (err) => {
+                        if (err) console.error('Error seeding user', err.message);
+                        else console.log('Default user created (user / user123)');
                     }
                 );
             }
