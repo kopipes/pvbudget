@@ -389,115 +389,100 @@ function App({ user, token, onLogout }) {
 
     // --- Excel Export ---
     const handleExportExcel = () => {
-        const ws = XLSX.utils.aoa_to_sheet([[]]);
-        let r = 0;
-        const setCell = (row, col, val) => { ws[XLSX.utils.encode_cell({ r: row, c: col })] = val; };
+        const wsData = [];
+        const displayPeriode = eventData.periodeStart && eventData.periodeEnd ? `${eventData.periodeStart} to ${eventData.periodeEnd}` : eventData.periode;
+        const acctFormat = '#,##0.00';
 
-        // --- Header info ---
-        const setH = (label, val) => { ws[XLSX.utils.encode_cell({ r, c: 0 })] = label; ws[XLSX.utils.encode_cell({ r, c: 1 })] = val; r++; };
-        setH('PROJECT NO.', eventData.projectNo || '');
-        setH('EVENT', eventData.name || '');
-        setH('VENUE', eventData.venue || '');
-        setH('PERIODE', eventData.periodeStart && eventData.periodeEnd ? `${eventData.periodeStart} to ${eventData.periodeEnd}` : eventData.periode || '');
-        setH('MANAGEMENT FEE', `${mgmtPct}%`);
-        setH('VERSION', `v${currentVersion}`);
-        setH('STATUS', STATUS_LABELS[currentStatus] || currentStatus);
-        r++;
+        wsData.push(['PROJECT NO.', eventData.projectNo || '']);
+        wsData.push(['EVENT', eventData.name || '']);
+        wsData.push(['VENUE', eventData.venue || '']);
+        wsData.push(['PERIODE', displayPeriode || '']);
+        wsData.push(['MANAGEMENT FEE', `${mgmtPct}%`]);
+        wsData.push(['VERSION', `v${currentVersion}`]);
+        wsData.push(['STATUS', STATUS_LABELS[currentStatus] || currentStatus]);
+        wsData.push([]);
 
-        // --- Table header ---
-        const headers = ['DESCRIPTION', 'QTY', 'MDY', 'INTERNAL BUDGET', 'BUDGET'];
-        if (activeTab === 'realisasi') headers.push('REALISASI');
-        headers.forEach((h, i) => { setCell(r, i, h); });
-        const tableHeaderRow = r;
-        r++;
+        const headerRow = ['DESCRIPTION', 'QTY', 'MDY', 'INTERNAL BUDGET', 'BUDGET'];
+        if (activeTab === 'realisasi') headerRow.push('REALISASI');
+        wsData.push(headerRow);
 
-        // --- Track item data rows for SUM formula ---
-        const itemDataRows = [];
+        // Track which rows have item data for SUM formula
+        const itemRowIndices = [];
 
         items.forEach(main => {
-            setCell(r, 0, main.name);
-            if (activeTab === 'realisasi') setCell(r, 5, '');
-            r++;
+            const mainRow = [main.name, '', '', '', ''];
+            if (activeTab === 'realisasi') mainRow.push('');
+            wsData.push(mainRow);
 
             main.subs.forEach(sub => {
-                itemDataRows.push(r);
-                setCell(r, 0, `  ${sub.name}`);
-                setCell(r, 1, { t: 'n', v: sub.qty });
-                setCell(r, 2, { t: 'n', v: sub.mdy });
-                setCell(r, 3, { t: 'n', v: sub.qty * sub.mdy * sub.internalRate, z: '#,##0.00' });
-                setCell(r, 4, { t: 'n', v: sub.qty * sub.mdy * sub.rate, z: '#,##0.00' });
-                if (activeTab === 'realisasi') setCell(r, 5, { t: 'n', v: sub.actualRate || 0, z: '#,##0.00' });
-                r++;
+                const rowIdx = wsData.length;
+                itemRowIndices.push(rowIdx);
+                const rowData = [`  ${sub.name}`, { t: 'n', v: sub.qty }, { t: 'n', v: sub.mdy },
+                    { t: 'n', v: sub.qty * sub.mdy * sub.internalRate, z: acctFormat },
+                    { t: 'n', v: sub.qty * sub.mdy * sub.rate, z: acctFormat }];
+                if (activeTab === 'realisasi') rowData.push({ t: 'n', v: sub.actualRate || 0, z: acctFormat });
+                wsData.push(rowData);
             });
         });
 
-        // Empty row
-        r++;
+        wsData.push([]); // empty row before subtotal
 
-        // --- SUBTOTAL ---
-        const subStart = itemDataRows.length > 0 ? Math.min(...itemDataRows) : tableHeaderRow + 1;
-        const subEnd = itemDataRows.length > 0 ? Math.max(...itemDataRows) : tableHeaderRow;
-        const sumRange = (col) => `SUM(${XLSX.utils.encode_cell({ r: subStart, c: col })}:${XLSX.utils.encode_cell({ r: subEnd, c: col })})`;
+        // SUM formula for subtotal using actual row indices
+        const sumRange = (col) => {
+            if (itemRowIndices.length === 0) return '0';
+            const minR = Math.min(...itemRowIndices);
+            const maxR = Math.max(...itemRowIndices);
+            const startCell = XLSX.utils.encode_cell({ r: minR, c: col });
+            const endCell = XLSX.utils.encode_cell({ r: maxR, c: col });
+            return `SUM(${startCell}:${endCell})`;
+        };
 
-        const subR = r;
-        setCell(r, 0, 'SUBTOTAL'); setCell(r, 3, { t: 'n', f: sumRange(3), z: '#,##0.00' }); setCell(r, 4, { t: 'n', f: sumRange(4), z: '#,##0.00' });
-        if (activeTab === 'realisasi') setCell(r, 5, { t: 'n', f: sumRange(5), z: '#,##0.00' });
-        r++;
+        wsData.push(['SUBTOTAL', '', '',
+            { t: 'n', v: subtotalInternal, z: acctFormat },
+            { t: 'n', v: subtotalBudget, z: acctFormat }]);
+        if (activeTab === 'realisasi') wsData.push(['SUBTOTAL REALISASI', '', '',
+            { t: 'n', v: subtotalInternal, z: acctFormat },
+            { t: 'n', v: subtotalBudget, z: acctFormat },
+            { t: 'n', v: subtotalRealisasi, z: acctFormat }]);
 
-        // --- MANAGEMENT FEE ---
-        const mgmtR = r;
-        setCell(r, 0, `MANAGEMENT FEE (${mgmtPct}%)`); setCell(r, 4, { t: 'n', f: `E${subR}*${mgmtPct / 100}`, z: '#,##0.00' });
-        if (activeTab === 'realisasi') setCell(r, 5, '');
-        r++;
+        wsData.push([`MANAGEMENT FEE (${mgmtPct}%)`, '', '',
+            '',
+            { t: 'n', v: managementFee, z: acctFormat }]);
+        wsData.push(['TOTAL', '', '',
+            { t: 'n', v: totalInternal, z: acctFormat },
+            { t: 'n', v: totalBudget, z: acctFormat }]);
+        wsData.push(['PPN (11%)', '', '',
+            '',
+            { t: 'n', v: ppn, z: acctFormat }]);
+        wsData.push(['GRAND TOTAL', '', '',
+            { t: 'n', v: grandTotalInternal, z: acctFormat },
+            { t: 'n', v: grandTotalBudget, z: acctFormat }]);
+        if (activeTab === 'realisasi') wsData[wsData.length - 1].push({ t: 'n', v: grandTotalRealisasi, z: acctFormat });
 
-        // --- TOTAL ---
-        const totR = r;
-        setCell(r, 0, 'TOTAL'); setCell(r, 3, { t: 'n', f: `D${subR}`, z: '#,##0.00' }); setCell(r, 4, { t: 'n', f: `E${subR}+E${mgmtR}`, z: '#,##0.00' });
-        if (activeTab === 'realisasi') setCell(r, 5, '');
-        r++;
-
-        // --- PPN (11%) ---
-        const ppnR = r;
-        setCell(r, 0, 'PPN (11%)'); setCell(r, 4, { t: 'n', f: `E${totR}*0.11`, z: '#,##0.00' });
-        if (activeTab === 'realisasi') setCell(r, 5, '');
-        r++;
-
-        // --- GRAND TOTAL ---
-        const grandR = r;
-        setCell(r, 0, 'GRAND TOTAL'); setCell(r, 3, { t: 'n', f: `D${totR}`, z: '#,##0.00' }); setCell(r, 4, { t: 'n', f: `E${totR}+E${ppnR}`, z: '#,##0.00' });
-        if (activeTab === 'realisasi') setCell(r, 5, { t: 'n', f: `F${subR}`, z: '#,##0.00' });
-        r++;
-
-        // Empty
-        r++;
-        // --- Metrics section ---
-        setCell(r, 3, 'Submitted Budget'); setCell(r, 4, { t: 'n', f: `E${grandR}`, z: '#,##0.00' }); r++;
-        const afterPpnR = r; setCell(r, 3, 'After PPN'); setCell(r, 4, { t: 'n', f: `E${totR}`, z: '#,##0.00' }); r++;
-        const afterPphR = r; setCell(r, 3, 'After PPH'); setCell(r, 4, { t: 'n', f: `E${afterPpnR}-(E${totR}*0.02)`, z: '#,##0.00' }); r++;
-        setCell(r, 3, 'P/L (Budget)'); setCell(r, 4, { t: 'n', f: `E${afterPphR}-D${grandR}`, z: '#,##0.00' }); r++;
-
+        wsData.push([]);
+        wsData.push(['', '', '', 'Submitted Budget', { t: 'n', v: grandTotalBudget, z: acctFormat }]);
+        wsData.push(['', '', '', 'After PPN', { t: 'n', v: afterPpn, z: acctFormat }]);
+        wsData.push(['', '', '', 'After PPH', { t: 'n', v: afterPph, z: acctFormat }]);
+        wsData.push(['', '', '', 'P/L (Budget)', { t: 'n', v: profitLoss, z: acctFormat }]);
         if (activeTab === 'realisasi') {
-            r++;
-            const actualR = r; setCell(r, 3, 'Actual Budget (Realisasi)'); setCell(r, 4, { t: 'n', f: `F${subR}`, z: '#,##0.00' }); r++;
-            setCell(r, 3, 'P/L (Realisasi)'); setCell(r, 4, { t: 'n', f: `E${actualR}-D${grandR}`, z: '#,##0.00' }); r++;
+            wsData.push(['', '', '', 'Actual Budget (Realisasi)', { t: 'n', v: grandTotalRealisasi, z: acctFormat }]);
+            wsData.push(['', '', '', 'P/L (Realisasi)', { t: 'n', v: profitLossRealisasi, z: acctFormat }]);
         }
 
         if (eventData.note) {
-            r++;
-            setCell(r, 0, 'NOTES:'); r++;
-            eventData.note.split('\n').forEach(line => { setCell(r, 0, line); r++; });
+            wsData.push([]);
+            wsData.push(['NOTES:']);
+            eventData.note.split('\n').forEach(line => wsData.push([line]));
         }
 
-        // Set the sheet range so Excel sees data
-        ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: r - 1, c: activeTab === 'realisasi' ? 5 : 4 } });
-
+        const ws = XLSX.utils.aoa_to_sheet(wsData);
         ws['!cols'] = [
             { wch: 35 }, { wch: 10 }, { wch: 10 }, { wch: 20 }, { wch: 20 },
             ...(activeTab === 'realisasi' ? [{ wch: 20 }] : [])
         ];
 
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Budget");
+        XLSX.utils.book_append_sheet(wb, ws, 'Budget');
         XLSX.writeFile(wb, `PVBudget_v${currentVersion}.xlsx`);
     };
 
