@@ -1004,12 +1004,12 @@ function App({ user, token, onLogout }) {
                     <div className="metric-line"><span className="metric-label">Submitted Budget</span><span className="metric-value">{formatCurrency(grandTotalBudget)}</span></div>
                     <div className="metric-line"><span className="metric-label">After PPN (Budget)</span><span className="metric-value">{formatCurrency(afterPpn)}</span></div>
                     <div className="metric-line"><span className="metric-label">After PPH (Budget)</span><span className="metric-value">{formatCurrency(afterPph)}</span></div>
-                    <div className="metric-line pl"><span className="metric-label">P/L (Budget)</span><span className="metric-value" style={profitLoss < 0 ? { color: '#ef4444' } : {}}>{formatCurrency(profitLoss)}</span></div>
+                    <div className="metric-line pl"><span className="metric-label">P/L (Budget)</span><span className="metric-value" style={{ color: profitLoss < 0 ? '#ef4444' : '#16a34a' }}>{formatCurrency(profitLoss)}</span></div>
                     {activeTab === 'realisasi' && (
                         <>
                             <div style={{ height: '1px', background: 'var(--border)', margin: '1rem 0' }}></div>
                             <div className="metric-line"><span className="metric-label" style={{ color: 'var(--primary)', fontWeight: 'bold' }}>Actual Budget (Realisasi)</span><span className="metric-value" style={{ color: 'var(--primary)', fontWeight: 'bold' }}>{formatCurrency(grandTotalRealisasi)}</span></div>
-                            <div className="metric-line pl"><span className="metric-label" style={{ color: 'var(--primary)', fontWeight: 'bold' }}>P/L (Realisasi)</span><span className="metric-value" style={{ color: profitLossRealisasi < 0 ? '#ef4444' : 'var(--primary)', fontWeight: 'bold' }}>{formatCurrency(profitLossRealisasi)}</span></div>
+                            <div className="metric-line pl"><span className="metric-label" style={{ color: 'var(--primary)', fontWeight: 'bold' }}>P/L (Realisasi)</span><span className="metric-value" style={{ color: profitLossRealisasi < 0 ? '#ef4444' : '#16a34a', fontWeight: 'bold' }}>{formatCurrency(profitLossRealisasi)}</span></div>
                         </>
                     )}
                 </div>
