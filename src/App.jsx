@@ -52,8 +52,11 @@ function App({ user, token, onLogout }) {
     });
 
     const [loadedForm, setLoadedForm] = useState(null);
-    const [items, setItems] = useState([{ id: 'm1', name: 'NEW SECTION', subs: [] }]);
+    const [items, setItems] = useState([{ id: 'm1', name: 'NEW SECTION', subs: [], isNew: true }]);
     const [currentFormId, setCurrentFormId] = useState(null);
+    const [baseItemCount, setBaseItemCount] = useState(0);
+    const [baseItemCountRealisasi, setBaseItemCountRealisasi] = useState(0);
+    const [originalRealisasiCount, setOriginalRealisasiCount] = useState(0);
     const [currentStatus, setCurrentStatus] = useState(STATUS.DRAFT);
     const [currentVersion, setCurrentVersion] = useState(1);
     const [showLoadModal, setShowLoadModal] = useState(false);
@@ -147,20 +150,61 @@ function App({ user, token, onLogout }) {
     const generateId = () => Math.random().toString(36).substr(2, 9);
 
     // --- Item handlers ---
-    const addMainItem = () => { if (!canEdit) return; setItems([...items, { id: generateId(), name: 'NEW ITEM', subs: [] }]); };
-    const removeMainItem = (mainId) => { if (!canEdit) return; setItems(items.filter(item => item.id !== mainId)); };
-    const updateMainItemName = (mainId, name) => { if (!canEdit) return; setItems(items.map(item => item.id === mainId ? { ...item, name } : item)); };
-    const addSubItem = (mainId) => {
-        if (!canEdit) return;
+    const canAddItems = canEdit || isRealizationForm || (activeTab === 'realisasi' && canEditRealisasi);
+    const addMainItem = () => { 
+        if (!canAddItems) return; 
+        setItems([...items, { id: generateId(), name: 'NEW ITEM', subs: [] }]);
+        setNewlyAddedCount(prev => prev + 1);
+    };
+    const removeMainItem = (mainId, mainIndex) => { 
+        const threshold = (activeTab === 'realisasi' && !isRealizationForm) ? baseItemCountRealisasi : baseItemCount;
+        if (mainIndex < threshold) return; // Can't remove original items
+        setItems(items.filter(item => item.id !== mainId));
+    };
+    const getThreshold = () => (activeTab === 'realisasi' && !isRealizationForm) ? baseItemCountRealisasi : baseItemCount;
+    const updateMainItemName = (mainId, mainIndex, name) => { 
+        if (mainIndex < getThreshold()) return; // Can't edit original items in REALISASI
+        setItems(items.map(item => item.id === mainId ? { ...item, name } : item)); 
+    };
+    const addSubItem = (mainId, mainIndex) => {
+        if (mainIndex < getThreshold()) return; // Can't add sub to original items
         setItems(items.map(item => {
             if (item.id === mainId) return { ...item, subs: [...item.subs, { id: generateId(), name: 'New Sub Item', qty: 1, mdy: 1, internalRate: 0, rate: 0, actualRate: 0 }] };
             return item;
         }));
     };
-    const removeSubItem = (mainId, subId) => { if (!canEdit) return; setItems(items.map(item => item.id === mainId ? { ...item, subs: item.subs.filter(sub => sub.id !== subId) } : item)); };
+    const removeSubItem = (mainId, mainIndex, subId) => { 
+        if (mainIndex < getThreshold()) return; // Can't remove sub from original items
+        setItems(items.map(item => item.id === mainId ? { ...item, subs: item.subs.filter(sub => sub.id !== subId) } : item)); 
+    };
+    const getEditThreshold = () => {
+        // In REALISASI tab: use baseItemCountRealisasi (items after this are "new")
+        // In realization form: use baseItemCount
+        if (activeTab === 'realisasi' && !isRealizationForm) return baseItemCountRealisasi;
+        return baseItemCount;
+    };
+    const canEditItemById = (mainId) => {
+        const idx = items.findIndex(i => i.id === mainId);
+        const threshold = getEditThreshold();
+        // In REALISASI mode: items at or after threshold are editable (new items only)
+        return idx >= threshold;
+    };
+    const canEditActualRate = (mainId) => {
+        // In REALISASI mode: both old and new items can edit actualRate
+        return (isRealizationForm || (activeTab === 'realisasi')) && canEditRealisasi;
+    };
     const updateSubItem = (mainId, subId, field, value) => {
-        if (field === 'actualRate' && !canEditRealisasi) return;
-        if (field !== 'actualRate' && !canEdit) return;
+        // For actualRate field, check canEditActualRate
+        if (field === 'actualRate') {
+            if (!canEditActualRate(mainId)) return;
+            setItems(items.map(item => {
+                if (item.id === mainId) return { ...item, subs: item.subs.map(sub => sub.id === subId ? { ...sub, [field]: value } : sub) };
+                return item;
+            }));
+            return;
+        }
+        // For other fields, check canEditItemById
+        if (!canEditItemById(mainId)) return;
         setItems(items.map(item => {
             if (item.id === mainId) return { ...item, subs: item.subs.map(sub => sub.id === subId ? { ...sub, [field]: value } : sub) };
             return item;
@@ -409,7 +453,11 @@ function App({ user, token, onLogout }) {
                 // Store budget's management fee for REALISASI tab calculations
                 setBudgetMgmtFeePct(mgmtFee);
                 setSelectedDivisionId(form.division_id || '');
-                if (form.data && Array.isArray(form.data)) setItems(form.data);
+                if (form.data && Array.isArray(form.data)) {
+                    setItems(form.data);
+                    // Track how many items existed when loaded (for realization form)
+                    setBaseItemCount(form.data.length);
+                }
                 setShowLoadModal(false);
                 setShowVersionHistory(false);
                 setShowDashboard(false);
@@ -445,6 +493,10 @@ function App({ user, token, onLogout }) {
 
     // Handle switching between BUDGET and REALISASI tabs
     const handleSwitchTab = async (tab) => {
+        if (tab === 'realisasi') {
+            // Reset threshold when switching to REALISASI
+            setBaseItemCountRealisasi(0);
+        }
         setActiveTab(tab);
         if (tab === 'realisasi' && currentFormId && !isRealizationForm) {
             // Load realization data from linked realization form
@@ -459,15 +511,19 @@ function App({ user, token, onLogout }) {
                             const realizationForm = await realizationRes.json();
                             if (realizationForm.data && Array.isArray(realizationForm.data)) {
                                 setItems(realizationForm.data);
+                                // baseItemCountRealisasi = original budget items count
+                                // Items before this index are "original" (read-only except actualRate)
+                                // Items at or after this index are "new" (fully editable)
+                                if (loadedForm && loadedForm.data && Array.isArray(loadedForm.data)) {
+                                    setBaseItemCountRealisasi(loadedForm.data.length);
+                                }
                             }
-                            // Use budget's management fee percentage (stored in budgetMgmtFeePct)
                             setEventData(prev => ({ ...prev, managementFeePercent: budgetMgmtFeePct }));
                         }
                     }
                 }
             } catch (e) { console.error('Failed to load realization data', e); }
         } else if (tab === 'budget') {
-            // Reload budget data
             if (loadedForm && loadedForm.data && Array.isArray(loadedForm.data)) {
                 setItems(loadedForm.data);
                 setEventData(prev => ({ ...prev, managementFeePercent: loadedForm.management_fee_pct != null ? loadedForm.management_fee_pct : 10 }));
@@ -902,19 +958,33 @@ function App({ user, token, onLogout }) {
                         </tr>
                     </thead>
                     <tbody>
-                        {items.map((mainItem) => (
+                        {items.map((mainItem, mainIndex) => {
+                            // For realization mode: only allow editing items that were added AFTER the form was loaded
+                            const isRealisasiMode = isRealizationForm || (activeTab === 'realisasi');
+                            // In REALISASI tab, threshold = baseItemCountRealisasi (items before this index are original/locked)
+                            // In realization FORM, threshold = baseItemCount
+                            const threshold = (activeTab === 'realisasi' && !isRealizationForm) ? baseItemCountRealisasi : baseItemCount;
+                            // Items at or after threshold are editable
+                            const isNewItem = mainIndex >= threshold;
+                            // In REALISASI tab: only new items (index >= threshold) are fully editable
+                            // Original items (index < threshold): only actualRate column is editable
+                            const canEditAllFields = isRealisasiMode ? isNewItem : canAddItems;
+                            // canEditAllFields: controls edit for name, qty, mdy, rates
+                            // canEditActualRate(mainItem.id): controls edit for Realisasi column (both original and new)
+                            
+                            return (
                             <Fragment key={mainItem.id}>
                                 <tr className="row-main-item">
                                     <td>
-                                        <input type="text" className="cell-input" value={mainItem.name} onChange={(e) => updateMainItemName(mainItem.id, e.target.value)} style={{ fontWeight: 700 }} disabled={!canEdit} />
+                                        <input type="text" className="cell-input" value={mainItem.name} onChange={(e) => updateMainItemName(mainItem.id, mainIndex, e.target.value)} style={{ fontWeight: 700 }} disabled={!canEditAllFields} />
                                     </td>
                                     <td></td><td></td><td></td><td></td>
                                     {activeTab === 'realisasi' && <td></td>}
                                     <td className="col-actions" style={{ display: 'flex', gap: '4px' }}>
-                                        {canEdit && (
+                                        {canEditAllFields && (
                                             <>
-                                                <button className="btn-icon btn-add-sub" title="Add Sub Item" onClick={() => addSubItem(mainItem.id)}><PlusCircle size={18} /></button>
-                                                <button className="btn-icon" title="Remove Main Item" onClick={() => removeMainItem(mainItem.id)}><Trash2 size={18} /></button>
+                                                <button className="btn-icon btn-add-sub" title="Add Sub Item" onClick={() => addSubItem(mainItem.id, mainIndex)}><PlusCircle size={18} /></button>
+                                                <button className="btn-icon" title="Remove Main Item" onClick={() => removeMainItem(mainItem.id, mainIndex)}><Trash2 size={18} /></button>
                                             </>
                                         )}
                                     </td>
@@ -924,36 +994,37 @@ function App({ user, token, onLogout }) {
                                     const rowTotalBudget = sub.qty * sub.mdy * sub.rate;
                                     return (
                                         <tr className="row-sub-item" key={sub.id}>
-                                            <td><input type="text" className="cell-input" value={sub.name} onChange={(e) => updateSubItem(mainItem.id, sub.id, 'name', e.target.value)} style={{ paddingLeft: '2rem' }} disabled={!canEdit} /></td>
-                                            <td><input type="number" className="cell-input align-center" value={sub.qty} onChange={(e) => updateSubItem(mainItem.id, sub.id, 'qty', parseFloat(e.target.value) || 0)} disabled={!canEdit} /></td>
-                                            <td><input type="number" className="cell-input align-center" value={sub.mdy} onChange={(e) => updateSubItem(mainItem.id, sub.id, 'mdy', parseFloat(e.target.value) || 0)} disabled={!canEdit} /></td>
+                                            <td><input type="text" className="cell-input" value={sub.name} onChange={(e) => updateSubItem(mainItem.id, sub.id, 'name', e.target.value)} style={{ paddingLeft: '2rem' }} disabled={!canEditAllFields} /></td>
+                                            <td><input type="number" className="cell-input align-center" value={sub.qty} onChange={(e) => updateSubItem(mainItem.id, sub.id, 'qty', parseFloat(e.target.value) || 0)} disabled={!canEditAllFields} /></td>
+                                            <td><input type="number" className="cell-input align-center" value={sub.mdy} onChange={(e) => updateSubItem(mainItem.id, sub.id, 'mdy', parseFloat(e.target.value) || 0)} disabled={!canEditAllFields} /></td>
                                             <td>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 0.5rem' }}>
-                                                    <input type="text" className="cell-input align-right" value={sub.internalRate === 0 ? '' : formatCurrency(sub.internalRate)} onChange={(e) => updateSubItem(mainItem.id, sub.id, 'internalRate', parseCurrency(e.target.value))} style={{ width: '45%' }} placeholder="Rate" disabled={!canEdit} />
+                                                    <input type="text" className="cell-input align-right" value={sub.internalRate === 0 ? '' : formatCurrency(sub.internalRate)} onChange={(e) => updateSubItem(mainItem.id, sub.id, 'internalRate', parseCurrency(e.target.value))} style={{ width: '45%' }} placeholder="Rate" disabled={!canEditAllFields} />
                                                     <div className="cell-readonly align-right" style={{ width: '50%' }}>{formatCurrency(rowTotalInternal)}</div>
                                                 </div>
                                             </td>
                                             <td>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 0.5rem' }}>
-                                                    <input type="text" className="cell-input align-right" value={sub.rate === 0 ? '' : formatCurrency(sub.rate)} onChange={(e) => updateSubItem(mainItem.id, sub.id, 'rate', parseCurrency(e.target.value))} style={{ width: '45%' }} placeholder="Rate" disabled={!canEdit} />
+                                                    <input type="text" className="cell-input align-right" value={sub.rate === 0 ? '' : formatCurrency(sub.rate)} onChange={(e) => updateSubItem(mainItem.id, sub.id, 'rate', parseCurrency(e.target.value))} style={{ width: '45%' }} placeholder="Rate" disabled={!canEditAllFields} />
                                                     <div className="cell-readonly align-right" style={{ width: '50%', fontWeight: 600 }}>{formatCurrency(rowTotalBudget)}</div>
                                                 </div>
                                             </td>
                                             {activeTab === 'realisasi' && (
                                                 <td style={{ background: 'rgba(234,179,8,0.05)', padding: '0 0.5rem' }}>
-                                                    <input type="text" className="cell-input align-right" value={sub.actualRate === 0 ? '' : formatCurrency(sub.actualRate)} onChange={(e) => updateSubItem(mainItem.id, sub.id, 'actualRate', parseCurrency(e.target.value))} style={{ width: '100%', color: 'var(--primary)', fontWeight: 600 }} placeholder="Actual Total" disabled={!canEditRealisasi} />
+                                                    <input type="text" className="cell-input align-right" value={sub.actualRate === 0 ? '' : formatCurrency(sub.actualRate)} onChange={(e) => updateSubItem(mainItem.id, sub.id, 'actualRate', parseCurrency(e.target.value))} style={{ width: '100%', color: 'var(--primary)', fontWeight: 600 }} placeholder="Actual Total" disabled={!canEditActualRate(mainItem.id)} />
                                                 </td>
                                             )}
                                             <td className="col-actions">
-                                                {canEdit && <button className="btn-icon" title="Remove Sub Item" onClick={() => removeSubItem(mainItem.id, sub.id)}><Trash2 size={18} /></button>}
+                                                {canEditAllFields && <button className="btn-icon" title="Remove Sub Item" onClick={() => removeSubItem(mainItem.id, mainIndex, sub.id)}><Trash2 size={18} /></button>}
                                             </td>
                                         </tr>
                                     );
                                 })}
                             </Fragment>
-                        ))}
+                            );
+                        })}
                         <tr><td colSpan={activeTab === 'realisasi' ? 7 : 6} style={{ height: '0.5rem' }}></td></tr>
-                        {canEdit && (
+                        {(canEdit || isRealizationForm || (activeTab === 'realisasi' && canEditRealisasi)) && (
                             <tr>
                                 <td colSpan={activeTab === 'realisasi' ? 7 : 6} style={{ padding: '0.5rem 1rem', borderBottom: 'none' }}>
                                     <button className="btn btn-primary btn-sm" onClick={addMainItem}><Plus size={16} /> Add Main Item</button>
