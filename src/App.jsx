@@ -476,25 +476,21 @@ function App({ user, token, onLogout }) {
         } catch (e) { await showDialog('alert', 'Failed to create PO', 'Error'); }
     };
 
-    // Handle saving PO Number
-    const handleSavePONumber = async () => {
-        if (!poNumber.trim()) {
-            await showDialog('alert', 'PO Number is required', 'Error');
-            return;
-        }
+    // Handle saving PO (saves all PO numbers in the form data)
+    const handleSavePO = async () => {
+        if (!currentFormId) return;
         try {
-            const res = await fetch(`${API}/api/forms/${currentFormId}/po`, { 
+            const res = await fetch(`${API}/api/forms/${currentFormId}`, { 
                 method: 'PUT', 
                 headers: authHeaders, 
-                body: JSON.stringify({ po_number: poNumber }) 
+                body: JSON.stringify({ data: items }) 
             });
-            const data = await res.json();
             if (!res.ok) {
-                await showDialog('alert', data.error || 'Failed to save PO Number', 'Error');
+                await showDialog('alert', 'Failed to save PO Numbers', 'Error');
                 return;
             }
-            await showDialog('alert', 'PO Number saved successfully!', 'Success');
-        } catch (e) { await showDialog('alert', 'Failed to save PO Number', 'Error'); }
+            await showDialog('alert', 'PO Numbers saved successfully!', 'Success');
+        } catch (e) { await showDialog('alert', 'Failed to save PO Numbers', 'Error'); }
     };
 
     // Check if user can edit PO Number (Admin, Manager, or Corporate)
@@ -1101,6 +1097,12 @@ function App({ user, token, onLogout }) {
                 {currentStatus === STATUS.APPROVED && !hasPO && (!loadedForm?.form_type || loadedForm?.form_type === 'budget') && (
                     <button className="btn btn-sm" style={{ background: '#10b981', color: '#fff' }} onClick={handleCreatePO}>
                         <Receipt size={16} /> Create PO
+                    </button>
+                )}
+                {/* Save PO button - only for approved forms with PO (for Admin/Manager/Corporate) */}
+                {currentStatus === STATUS.APPROVED && hasPO && canEditPONumber && (
+                    <button className="btn btn-sm" style={{ background: '#10b981', color: '#fff' }} onClick={handleSavePO}>
+                        <Save size={16} /> Save PO
                     </button>
                 )}
                 {/* Create Realization button - only for approved budget forms without realization */}
