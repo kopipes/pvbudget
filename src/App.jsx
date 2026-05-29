@@ -1099,12 +1099,6 @@ function App({ user, token, onLogout }) {
                         <Receipt size={16} /> Create PO
                     </button>
                 )}
-                {/* Save PO button - only for approved forms with PO (for Admin/Manager/Corporate) */}
-                {currentStatus === STATUS.APPROVED && hasPO && canEditPONumber && (
-                    <button className="btn btn-sm" style={{ background: '#10b981', color: '#fff' }} onClick={handleSavePO}>
-                        <Save size={16} /> Save PO
-                    </button>
-                )}
                 {/* Create Realization button - only for approved budget forms without realization */}
                 {currentStatus === STATUS.APPROVED && !hasRealization && (!loadedForm?.form_type || loadedForm?.form_type === 'budget') && !isCorporate && (
                     <button className="btn btn-sm" style={{ background: '#f59e0b', color: '#fff' }} onClick={handleCreateRealization}>
@@ -1231,7 +1225,7 @@ function App({ user, token, onLogout }) {
                             <th className="col-internal">Internal Budget</th>
                             <th className="col-budget">Budget</th>
                             {activeTab === 'realisasi' && <th className="col-realisasi">Realisasi</th>}
-                            <th className="col-po">PO Number</th>
+                            {activeTab === 'po' && <th className="col-po">PO Number</th>}
                             <th className="col-actions"></th>
                         </tr>
                     </thead>
