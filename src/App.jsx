@@ -292,14 +292,9 @@ function App({ user, token, onLogout }) {
             </div>
             {!canEditPONumber && (
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem', fontStyle: 'italic' }}>
-                    Only Manager or Corporate can edit PO Number.
+                    Only Manager, Corporate, or Admin can edit PO Number.
                 </p>
             )}
-            <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'rgba(16,185,129,0.08)', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.2)' }}>
-                <p style={{ margin: 0, fontSize: '0.875rem', color: '#059669' }}>
-                    <strong>Note:</strong> PO Number can only be edited by Manager or Corporate users. Once set, it will be displayed in the Realisasi form.
-                </p>
-            </div>
         </div>
     );
     
