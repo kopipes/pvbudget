@@ -502,8 +502,8 @@ function App({ user, token, onLogout }) {
         } catch (e) { await showDialog('alert', 'Failed to save PO Number', 'Error'); }
     };
 
-    // Check if user can edit PO Number
-    const canEditPONumber = isManager || isCorporate;
+    // Check if user can edit PO Number (Admin, Manager, or Corporate)
+    const canEditPONumber = isAdmin || isManager || isCorporate;
 
     // Handle creating a realization form from an approved budget
     const handleCreateRealization = async () => {
