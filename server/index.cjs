@@ -461,7 +461,85 @@ app.put('/api/forms/:id/unlock', (req, res) => {
     });
 });
 
-// 15. POST /api/forms/:id/create-realization (Create realization form from approved budget)
+// 15. POST /api/forms/:id/create-po (Create PO from approved budget)
+app.post('/api/forms/:id/create-po', (req, res) => {
+    if (req.user.role === 'corporate') {
+        return res.status(403).json({ error: 'Corporate users cannot create PO' });
+    }
+
+    const { id } = req.params;
+
+    db.get('SELECT * FROM forms WHERE id = ?', [id], (err, form) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!form) return res.status(404).json({ error: 'Form not found' });
+
+        // Only allow creating PO from approved budget forms
+        if (form.form_type && form.form_type !== 'budget') {
+            return res.status(400).json({ error: 'Only budget forms can have PO created' });
+        }
+        if (form.status !== STATUS.APPROVED) {
+            return res.status(400).json({ error: 'Only approved budget forms can have PO created' });
+        }
+
+        // Check if PO already exists for this budget
+        if (form.has_po) {
+            return res.status(400).json({ 
+                error: 'PO already exists for this budget',
+                po_number: form.po_number
+            });
+        }
+
+        // Update the budget form to mark it has having PO
+        // PO Number will be set via update-po endpoint
+        db.run(`UPDATE forms SET has_po = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [id], function (err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.status(201).json({ 
+                id: id, 
+                message: 'PO creation initiated. Please set the PO Number.',
+                po_number: null
+            });
+        });
+    });
+});
+
+// 16. PUT /api/forms/:id/po (Update PO number - Manager/Corporate only)
+app.put('/api/forms/:id/po', (req, res) => {
+    const { id } = req.params;
+    const { po_number } = req.body;
+
+    // Only Manager and Corporate can update PO Number
+    if (req.user.role !== 'manager' && req.user.role !== 'corporate') {
+        return res.status(403).json({ error: 'Only Manager or Corporate can update PO Number' });
+    }
+
+    if (!po_number || !po_number.trim()) {
+        return res.status(400).json({ error: 'PO Number is required' });
+    }
+
+    db.get('SELECT * FROM forms WHERE id = ?', [id], (err, form) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!form) return res.status(404).json({ error: 'Form not found' });
+
+        // Allow update if has_po is set (PO initiated) OR if corporate (always can set)
+        if (!form.has_po && req.user.role !== 'corporate') {
+            return res.status(400).json({ error: 'PO must be created first before setting PO Number' });
+        }
+
+        db.run(`UPDATE forms SET po_number = ?, has_po = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, 
+            [po_number.trim(), id], 
+            function (err) {
+                if (err) return res.status(500).json({ error: err.message });
+                res.json({ 
+                    id, 
+                    po_number: po_number.trim(),
+                    message: 'PO Number saved successfully'
+                });
+            }
+        );
+    });
+});
+
+// 17. POST /api/forms/:id/create-realization (Create realization form from approved budget)
 app.post('/api/forms/:id/create-realization', (req, res) => {
     if (req.user.role === 'corporate') {
         return res.status(403).json({ error: 'Corporate users cannot create realization forms' });

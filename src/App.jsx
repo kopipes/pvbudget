@@ -85,6 +85,8 @@ function App({ user, token, onLogout }) {
     const [isRealizationForm, setIsRealizationForm] = useState(false);
     const [realizationFormId, setRealizationFormId] = useState(null);
     const [budgetMgmtFeePct, setBudgetMgmtFeePct] = useState(10);
+    const [hasPO, setHasPO] = useState(false);
+    const [poNumber, setPoNumber] = useState('');
 
     const authHeaders = {
         'Content-Type': 'application/json',
@@ -256,6 +258,51 @@ function App({ user, token, onLogout }) {
         });
     };
 
+    // PO Section Component (displayed when on PO tab)
+    const POSection = () => (
+        <div style={{ padding: '1.5rem', background: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--border)', marginBottom: '1rem' }}>
+            <h3 style={{ margin: '0 0 1rem 0', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Receipt size={20} /> Purchase Order Information
+            </h3>
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                <div style={{ flex: '1', minWidth: '250px' }}>
+                    <label style={{ fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', fontSize: '0.875rem' }}>PO Number *</label>
+                    <input 
+                        type="text" 
+                        value={poNumber} 
+                        onChange={(e) => setPoNumber(e.target.value)} 
+                        placeholder="Enter PO Number (e.g., PO/2026/001)"
+                        disabled={!canEditPONumber}
+                        style={{ 
+                            width: '100%', 
+                            padding: '0.75rem 1rem', 
+                            borderRadius: '8px', 
+                            border: canEditPONumber ? '1px solid var(--border)' : '1px solid var(--border)',
+                            background: canEditPONumber ? 'var(--surface)' : 'var(--bg-color)',
+                            fontSize: '1rem',
+                            marginTop: '0.5rem'
+                        }}
+                    />
+                </div>
+                {canEditPONumber && (
+                    <button className="btn btn-primary" onClick={handleSavePONumber} style={{ marginBottom: '0' }}>
+                        <Save size={16} /> Save PO Number
+                    </button>
+                )}
+            </div>
+            {!canEditPONumber && (
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem', fontStyle: 'italic' }}>
+                    Only Manager or Corporate can edit PO Number.
+                </p>
+            )}
+            <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'rgba(16,185,129,0.08)', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.2)' }}>
+                <p style={{ margin: 0, fontSize: '0.875rem', color: '#059669' }}>
+                    <strong>Note:</strong> PO Number can only be edited by Manager or Corporate users. Once set, it will be displayed in the Realisasi form.
+                </p>
+            </div>
+        </div>
+    );
+    
     // Sub-item drag and drop handler
     const handleSubDragEnd = (event, mainItemId) => {
         const { active, over } = event;
@@ -326,7 +373,7 @@ function App({ user, token, onLogout }) {
     const addSubItem = (mainId, mainIndex) => {
         if (mainIndex < getThreshold()) return; // Can't add sub to original items
         setItems(items.map(item => {
-            if (item.id === mainId) return { ...item, subs: [...item.subs, { id: generateId(), name: 'New Sub Item', qty: 1, mdy: 1, internalRate: 0, rate: 0, actualRate: 0 }] };
+            if (item.id === mainId) return { ...item, subs: [...item.subs, { id: generateId(), name: 'New Sub Item', qty: 1, mdy: 1, internalRate: 0, rate: 0, actualRate: 0, poNumber: '' }] };
             return item;
         }));
     };
@@ -354,6 +401,15 @@ function App({ user, token, onLogout }) {
         // For actualRate field, check canEditActualRate
         if (field === 'actualRate') {
             if (!canEditActualRate(mainId)) return;
+            setItems(items.map(item => {
+                if (item.id === mainId) return { ...item, subs: item.subs.map(sub => sub.id === subId ? { ...sub, [field]: value } : sub) };
+                return item;
+            }));
+            return;
+        }
+        // For PO Number field, allow Manager/Corporate/Admin to edit any item
+        if (field === 'poNumber') {
+            if (!canEditItemById(mainId) && !(isManager || isCorporate || isAdmin)) return;
             setItems(items.map(item => {
                 if (item.id === mainId) return { ...item, subs: item.subs.map(sub => sub.id === subId ? { ...sub, [field]: value } : sub) };
                 return item;
@@ -409,6 +465,45 @@ function App({ user, token, onLogout }) {
         setOpenedFormId(null);
         setSourceBudget(null);
     };
+
+    // Handle creating PO from an approved budget
+    const handleCreatePO = async () => {
+        if (!currentFormId || currentStatus !== STATUS.APPROVED) return;
+        try {
+            const res = await fetch(`${API}/api/forms/${currentFormId}/create-po`, { method: 'POST', headers: authHeaders });
+            const data = await res.json();
+            if (!res.ok) {
+                await showDialog('alert', data.error || 'Failed to create PO', 'Error');
+                return;
+            }
+            setHasPO(true);
+            await showDialog('alert', 'PO initiation started. Now please set the PO Number.', 'PO Created');
+        } catch (e) { await showDialog('alert', 'Failed to create PO', 'Error'); }
+    };
+
+    // Handle saving PO Number
+    const handleSavePONumber = async () => {
+        if (!poNumber.trim()) {
+            await showDialog('alert', 'PO Number is required', 'Error');
+            return;
+        }
+        try {
+            const res = await fetch(`${API}/api/forms/${currentFormId}/po`, { 
+                method: 'PUT', 
+                headers: authHeaders, 
+                body: JSON.stringify({ po_number: poNumber }) 
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                await showDialog('alert', data.error || 'Failed to save PO Number', 'Error');
+                return;
+            }
+            await showDialog('alert', 'PO Number saved successfully!', 'Success');
+        } catch (e) { await showDialog('alert', 'Failed to save PO Number', 'Error'); }
+    };
+
+    // Check if user can edit PO Number
+    const canEditPONumber = isManager || isCorporate;
 
     // Handle creating a realization form from an approved budget
     const handleCreateRealization = async () => {
@@ -632,6 +727,10 @@ function App({ user, token, onLogout }) {
                 } else {
                     setHasRealization(false);
                 }
+
+                // Set PO state from form data
+                setHasPO(form.has_po ? true : false);
+                setPoNumber(form.po_number || '');
 
                 // Set isRealizationForm flag and switch to realize tab
                 setIsRealizationForm(form.form_type === 'realization');
@@ -923,14 +1022,24 @@ function App({ user, token, onLogout }) {
                 <h1 style={{ fontWeight: '800', letterSpacing: '4px', color: 'var(--primary)', textTransform: 'uppercase', margin: 0 }}>
                     {isRealizationForm ? 'REALISASI' : 'BUDGET'}
                 </h1>
-                {/* Show BUDGET/REALISASI tabs only for approved forms with realization */}
-                {currentStatus === STATUS.APPROVED && hasRealization && loadedForm?.form_type !== 'realization' && (
+                {/* Show BUDGET/PO/REALISASI tabs only for approved forms */}
+                {currentStatus === STATUS.APPROVED && loadedForm?.form_type !== 'realization' && (
                     <div style={{ display: 'inline-flex', marginTop: '1rem', background: 'var(--surface)', borderRadius: '8px', padding: '4px', boxShadow: 'var(--shadow-sm)' }}>
                         <button className={`btn btn-sm ${activeTab === 'budget' ? 'btn-primary' : 'btn-secondary'}`} style={{ border: 'none', boxShadow: 'none' }} onClick={() => handleSwitchTab('budget')}>BUDGET</button>
-                        <button className={`btn btn-sm ${activeTab === 'realisasi' ? 'btn-primary' : 'btn-secondary'}`} style={{ border: 'none', boxShadow: 'none' }} onClick={() => handleSwitchTab('realisasi')}>REALISASI</button>
+                        {hasPO && (
+                            <button className={`btn btn-sm ${activeTab === 'po' ? 'btn-primary' : 'btn-secondary'}`} style={{ border: 'none', boxShadow: 'none' }} onClick={() => handleSwitchTab('po')}>PO</button>
+                        )}
+                        {hasRealization && (
+                            <button className={`btn btn-sm ${activeTab === 'realisasi' ? 'btn-primary' : 'btn-secondary'}`} style={{ border: 'none', boxShadow: 'none' }} onClick={() => handleSwitchTab('realisasi')}>REALISASI</button>
+                        )}
                     </div>
                 )}
             </div>
+
+            {/* PO SECTION - shown when PO tab is active */}
+            {activeTab === 'po' && <POSection />}
+
+                {/* PO NUMBER DISPLAY - removed per user request */}
 
             {/* TOP ACTION BAR */}
             <div className="top-action-bar">
@@ -985,6 +1094,12 @@ function App({ user, token, onLogout }) {
                 {isAdmin && currentStatus === STATUS.APPROVED && currentFormId && (
                     <button className="btn btn-sm" style={{ background: '#8b5cf6', color: '#fff' }} onClick={handleUnlockForm}>
                         <RefreshCw size={16} /> Unlock for Revision
+                    </button>
+                )}
+                {/* Create PO button - only for approved budget forms without PO */}
+                {currentStatus === STATUS.APPROVED && !hasPO && (!loadedForm?.form_type || loadedForm?.form_type === 'budget') && (
+                    <button className="btn btn-sm" style={{ background: '#10b981', color: '#fff' }} onClick={handleCreatePO}>
+                        <Receipt size={16} /> Create PO
                     </button>
                 )}
                 {/* Create Realization button - only for approved budget forms without realization */}
@@ -1113,6 +1228,7 @@ function App({ user, token, onLogout }) {
                             <th className="col-internal">Internal Budget</th>
                             <th className="col-budget">Budget</th>
                             {activeTab === 'realisasi' && <th className="col-realisasi">Realisasi</th>}
+                            <th className="col-po">PO Number</th>
                             <th className="col-actions"></th>
                         </tr>
                     </thead>
@@ -1144,6 +1260,7 @@ function App({ user, token, onLogout }) {
                                     canEditActualRate={canEditActualRate}
                                     isRealizationForm={isRealizationForm}
                                     onSubDragEnd={handleSubDragEnd}
+                                    isManagerOrCorporate={isManager || isCorporate || isAdmin}
                                 />
                             );
                         })}

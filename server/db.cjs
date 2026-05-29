@@ -112,6 +112,9 @@ const db = new sqlite3.Database(dbPath, (err) => {
         db.run(`ALTER TABLE forms ADD COLUMN approved_at_2 DATETIME`, () => {});
         db.run(`ALTER TABLE approval_history ADD COLUMN approval_stage TEXT`, () => {});
         db.run(`ALTER TABLE forms ADD COLUMN source_budget_id INTEGER`, () => {});
+        db.run(`ALTER TABLE forms ADD COLUMN po_number TEXT`, () => {});
+        db.run(`ALTER TABLE forms ADD COLUMN has_po INTEGER DEFAULT 0`, () => {});
+        db.run(`ALTER TABLE forms ADD COLUMN management_fee_pct REAL DEFAULT 10`, () => {});
 
         // Seed default admin user if no users exist
         db.get('SELECT COUNT(*) as count FROM users', (err, row) => {

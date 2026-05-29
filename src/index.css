@@ -168,8 +168,18 @@ th.col-budget {
 }
 
 .col-actions {
-  width: 5%;
-  text-align: center;
+    width: 80px;
+    text-align: center !important;
+}
+
+.col-po {
+    width: 150px;
+    text-align: center !important;
+}
+
+th.col-po,
+td.col-po {
+    min-width: 120px;
 }
 
 /* Sub rows and headers */

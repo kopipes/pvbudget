@@ -6,7 +6,7 @@ function SortableRow({
     mainItem, mainIndex, threshold, isRealisasiMode, activeTab,
     canAddItems, canEditAllFields, formatCurrency, parseCurrency,
     updateMainItemName, addSubItem, removeMainItem, updateSubItem, removeSubItem,
-    canEditActualRate, isRealizationForm
+    canEditActualRate, isRealizationForm, isManagerOrCorporate
 }) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: mainItem.id });
     const rowStyle = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
@@ -26,6 +26,7 @@ function SortableRow({
                 </td>
                 <td></td><td></td><td></td><td></td>
                 {activeTab === 'realisasi' && <td></td>}
+                <td style={{ background: 'rgba(16,185,129,0.05)' }}></td>
                 <td className="col-actions" style={{ display: 'flex', gap: '4px' }}>
                     {canEditAllFields && (
                         <>
@@ -51,6 +52,7 @@ function SortableRow({
                         updateSubItem={updateSubItem}
                         removeSubItem={removeSubItem}
                         mainIndex={mainIndex}
+                        isManagerOrCorporate={isManagerOrCorporate}
                     />
                 );
             })}
@@ -61,7 +63,8 @@ function SortableRow({
 // Sub-item component with sortable capability - uses composite id (mainId_subId)
 function SortableSubItem({ 
     sub, mainItemId, canEditAllFields, activeTab, canEditActualRate,
-    formatCurrency, parseCurrency, updateSubItem, removeSubItem, mainIndex 
+    formatCurrency, parseCurrency, updateSubItem, removeSubItem, mainIndex,
+    isManagerOrCorporate 
 }) {
     // Use composite id to make each sub-item sortable across all main items
     const sortableId = `${mainItemId}_${sub.id}`;
@@ -100,6 +103,9 @@ function SortableSubItem({
                     <input type="text" className="cell-input align-right" value={sub.actualRate === 0 ? '' : formatCurrency(sub.actualRate)} onChange={(e) => updateSubItem(mainItemId, sub.id, 'actualRate', parseCurrency(e.target.value))} style={{ width: '100%', color: 'var(--primary)', fontWeight: 600 }} placeholder="Actual Total" disabled={!canEditActualRate(mainItemId)} />
                 </td>
             )}
+            <td style={{ background: 'rgba(16,185,129,0.05)', padding: '0 0.5rem' }}>
+                <input type="text" className="cell-input" value={sub.poNumber || ''} onChange={(e) => updateSubItem(mainItemId, sub.id, 'poNumber', e.target.value)} placeholder="PO Number" style={{ width: '100%', fontSize: '0.8rem', color: '#059669' }} disabled={!canEditAllFields && !isManagerOrCorporate} />
+            </td>
             <td className="col-actions">
                 {canEditAllFields && <button className="btn-icon" title="Remove Sub Item" onClick={() => removeSubItem(mainItemId, mainIndex, sub.id)}><Trash2 size={18} /></button>}
             </td>
