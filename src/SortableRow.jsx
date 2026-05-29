@@ -104,7 +104,11 @@ function SortableSubItem({
                 </td>
             )}
             <td style={{ background: 'rgba(16,185,129,0.05)', padding: '0 0.5rem' }}>
-                <input type="text" className="cell-input" value={sub.poNumber || ''} onChange={(e) => updateSubItem(mainItemId, sub.id, 'poNumber', e.target.value)} placeholder="PO Number" style={{ width: '100%', fontSize: '0.8rem', color: '#059669' }} disabled={!canEditAllFields && !isManagerOrCorporate} />
+                {activeTab === 'po' ? (
+                    <input type="text" className="cell-input" value={sub.poNumber || ''} onChange={(e) => updateSubItem(mainItemId, sub.id, 'poNumber', e.target.value)} placeholder="PO Number" style={{ width: '100%', fontSize: '0.8rem', color: '#059669' }} disabled={!canEditAllFields && !isManagerOrCorporate} />
+                ) : (
+                    <span style={{ fontSize: '0.8rem', color: '#059669', fontFamily: 'monospace' }}>{sub.poNumber || '-'}</span>
+                )}
             </td>
             <td className="col-actions">
                 {canEditAllFields && <button className="btn-icon" title="Remove Sub Item" onClick={() => removeSubItem(mainItemId, mainIndex, sub.id)}><Trash2 size={18} /></button>}

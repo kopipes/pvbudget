@@ -1029,12 +1029,12 @@ function App({ user, token, onLogout }) {
 
             {/* PO NUMBER DISPLAY - removed per user request */}
 
-            {/* PO SECTION - shown when PO tab is active - PO numbers are saved with the form */}
+            {/* PO SECTION - shown when PO tab is active - Save PO button */}
             {activeTab === 'po' && canEditPONumber && (
                 <div style={{ padding: '1rem 1.5rem', background: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--border)', marginBottom: '1rem', display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
-                    <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
-                        PO Numbers are saved when you save the form.
-                    </div>
+                    <button className="btn btn-sm" style={{ background: '#10b981', color: '#fff' }} onClick={handleSavePO}>
+                        <Save size={16} /> Save PO
+                    </button>
                 </div>
             )}
 
@@ -1225,7 +1225,7 @@ function App({ user, token, onLogout }) {
                             <th className="col-internal">Internal Budget</th>
                             <th className="col-budget">Budget</th>
                             {activeTab === 'realisasi' && <th className="col-realisasi">Realisasi</th>}
-                            {activeTab === 'po' && <th className="col-po">PO Number</th>}
+                            {(activeTab === 'po' || activeTab === 'realisasi') && <th className="col-po">PO Number</th>}
                             <th className="col-actions"></th>
                         </tr>
                     </thead>
