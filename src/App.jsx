@@ -489,6 +489,8 @@ function App({ user, token, onLogout }) {
                 await showDialog('alert', 'Failed to save PO Numbers', 'Error');
                 return;
             }
+            // Update loadedForm with current items so switching tabs shows updated PO Numbers
+            setLoadedForm(prev => ({ ...prev, data: JSON.parse(JSON.stringify(items)) }));
             await showDialog('alert', 'PO Numbers saved successfully!', 'Success');
         } catch (e) { await showDialog('alert', 'Failed to save PO Numbers', 'Error'); }
     };
