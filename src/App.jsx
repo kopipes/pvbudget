@@ -1,9 +1,13 @@
 import { useState, Fragment, useEffect } from 'react';
-import { Plus, Trash2, PlusCircle, Save, FileDown, FilePlus, Search, X, AlertTriangle, LogOut, Shield, Building2, Send, Check, RefreshCw, Clock, CheckCircle, XCircle, History, Eye, LayoutDashboard, Receipt } from 'lucide-react';
+import { Plus, Trash2, PlusCircle, Save, FileDown, FilePlus, Search, X, AlertTriangle, LogOut, Shield, Building2, Send, Check, RefreshCw, Clock, CheckCircle, XCircle, History, Eye, LayoutDashboard, Receipt, GripVertical } from 'lucide-react';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import * as XLSX from 'xlsx';
 import UserManagement from './UserManagement.jsx';
 import DivisionManagement from './DivisionManagement.jsx';
 import Dashboard from './Dashboard.jsx';
+import SortableRow from './SortableRow.jsx';
 import './App.css';
 
 const API = import.meta.env.VITE_API_URL || '';
@@ -150,11 +154,164 @@ function App({ user, token, onLogout }) {
     const generateId = () => Math.random().toString(36).substr(2, 9);
 
     // --- Item handlers ---
+    // DnD sensors
+    const sensors = useSensors(
+        useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+        useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+    );
+
+    // Drag and drop handlers - handles both main items and sub-items (using composite IDs)
+    const handleDragEnd = (event) => {
+        const { active, over } = event;
+        if (!over || active.id === over.id) return;
+
+        setItems((items) => {
+            const activeId = active.id;
+            const overId = over.id;
+
+            // Check if dragging a main item
+            const activeIsMain = items.some(i => i.id === activeId);
+            if (activeIsMain) {
+                const oldIndex = items.findIndex(i => i.id === activeId);
+                const newIndex = items.findIndex(i => i.id === overId);
+                if (oldIndex !== -1 && newIndex !== -1) {
+                    return arrayMove(items, oldIndex, newIndex);
+                }
+                return items;
+            }
+
+            // Dragging a sub-item (composite ID format: mainId_subId)
+            const [activeMainId, activeSubId] = activeId.split('_');
+            const [overMainId, overSubId] = overId.split('_');
+
+            // If dropping on a main item, move sub-item to that main item
+            if (overMainId === undefined) {
+                // Dropped on a main item - move sub to that main item
+                const targetMain = items.find(i => i.id === overId);
+                if (targetMain && targetMain.id !== activeMainId) {
+                    let movedSub = null;
+                    const updatedItems = items.map(item => {
+                        if (item.id === activeMainId) {
+                            movedSub = item.subs.find(s => s.id === activeSubId);
+                            if (movedSub) {
+                                return { ...item, subs: item.subs.filter(s => s.id !== activeSubId) };
+                            }
+                        }
+                        return item;
+                    });
+                    if (movedSub) {
+                        return updatedItems.map(item => {
+                            if (item.id === overId) {
+                                return { ...item, subs: [...item.subs, movedSub] };
+                            }
+                            return item;
+                        });
+                    }
+                }
+                return items;
+            }
+
+            // Reorder within same main item or move to different main item
+            if (activeMainId === overMainId) {
+                // Same main item - reorder
+                return items.map(item => {
+                    if (item.id !== activeMainId) return item;
+                    const oldIndex = item.subs.findIndex(s => s.id === activeSubId);
+                    const newIndex = item.subs.findIndex(s => s.id === overSubId);
+                    if (oldIndex !== -1 && newIndex !== -1) {
+                        return { ...item, subs: arrayMove(item.subs, oldIndex, newIndex) };
+                    }
+                    return item;
+                });
+            } else {
+                // Different main item - move sub-item
+                let movedSub = null;
+                const updatedItems = items.map(item => {
+                    if (item.id === activeMainId) {
+                        movedSub = item.subs.find(s => s.id === activeSubId);
+                        if (movedSub) {
+                            return { ...item, subs: item.subs.filter(s => s.id !== activeSubId) };
+                        }
+                    }
+                    return item;
+                });
+                if (movedSub) {
+                    return updatedItems.map(item => {
+                        if (item.id === overMainId) {
+                            // Insert at position of over sub-item
+                            const overIndex = item.subs.findIndex(s => s.id === overSubId);
+                            const newSubs = [...item.subs];
+                            if (overIndex !== -1) {
+                                newSubs.splice(overIndex, 0, movedSub);
+                            } else {
+                                newSubs.push(movedSub);
+                            }
+                            return { ...item, subs: newSubs };
+                        }
+                        return item;
+                    });
+                }
+            }
+            return items;
+        });
+    };
+
+    // Sub-item drag and drop handler
+    const handleSubDragEnd = (event, mainItemId) => {
+        const { active, over } = event;
+        if (!over || active.id === over.id) return;
+
+        setItems((items) => {
+            // Find which main item contains the dropped target
+            const targetMainItem = items.find(item => 
+                item.id === over.id || item.subs.some(s => s.id === over.id)
+            );
+            
+            // If dropping on a main item, move sub-item to that main item
+            if (targetMainItem && targetMainItem.id !== mainItemId) {
+                // Find and remove sub from current main item
+                let movedSub = null;
+                const updatedItems = items.map(item => {
+                    if (item.id === mainItemId) {
+                        const subIndex = item.subs.findIndex(s => s.id === active.id);
+                        if (subIndex !== -1) {
+                            movedSub = item.subs[subIndex];
+                            return { ...item, subs: item.subs.filter(s => s.id !== active.id) };
+                        }
+                    }
+                    return item;
+                });
+                
+                // Add sub to target main item
+                if (movedSub) {
+                    return updatedItems.map(item => {
+                        if (item.id === targetMainItem.id) {
+                            return { ...item, subs: [...item.subs, movedSub] };
+                        }
+                        return item;
+                    });
+                }
+                return items;
+            }
+            
+            // Reorder within same main item
+            return items.map(item => {
+                if (item.id !== mainItemId) return item;
+                
+                const oldIndex = item.subs.findIndex(s => s.id === active.id);
+                const newIndex = item.subs.findIndex(s => s.id === over.id);
+                if (oldIndex === -1 || newIndex === -1) return item;
+                
+                const newSubs = arrayMove(item.subs, oldIndex, newIndex);
+                return { ...item, subs: newSubs };
+            });
+        });
+    };
+
     const canAddItems = canEdit || isRealizationForm || (activeTab === 'realisasi' && canEditRealisasi);
     const addMainItem = () => { 
         if (!canAddItems) return; 
         setItems([...items, { id: generateId(), name: 'NEW ITEM', subs: [] }]);
-        setNewlyAddedCount(prev => prev + 1);
     };
     const removeMainItem = (mainId, mainIndex) => { 
         const threshold = (activeTab === 'realisasi' && !isRealizationForm) ? baseItemCountRealisasi : baseItemCount;
@@ -945,9 +1102,11 @@ function App({ user, token, onLogout }) {
 
             {/* DATA GRID */}
             <div className="grid-container">
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                 <table className="data-table">
                     <thead>
                         <tr>
+                            <th className="col-desc" style={{ width: 40 }}></th>
                             <th className="col-desc">Description</th>
                             <th className="col-qty">QTY</th>
                             <th className="col-mdy">MDY</th>
@@ -958,75 +1117,42 @@ function App({ user, token, onLogout }) {
                         </tr>
                     </thead>
                     <tbody>
+                    <SortableContext items={[...items.map(i => i.id), ...items.flatMap(i => i.subs.map(s => `${i.id}_${s.id}`))]} strategy={verticalListSortingStrategy}>
                         {items.map((mainItem, mainIndex) => {
-                            // For realization mode: only allow editing items that were added AFTER the form was loaded
                             const isRealisasiMode = isRealizationForm || (activeTab === 'realisasi');
-                            // In REALISASI tab, threshold = baseItemCountRealisasi (items before this index are original/locked)
-                            // In realization FORM, threshold = baseItemCount
                             const threshold = (activeTab === 'realisasi' && !isRealizationForm) ? baseItemCountRealisasi : baseItemCount;
-                            // Items at or after threshold are editable
                             const isNewItem = mainIndex >= threshold;
-                            // In REALISASI tab: only new items (index >= threshold) are fully editable
-                            // Original items (index < threshold): only actualRate column is editable
                             const canEditAllFields = isRealisasiMode ? isNewItem : canAddItems;
-                            // canEditAllFields: controls edit for name, qty, mdy, rates
-                            // canEditActualRate(mainItem.id): controls edit for Realisasi column (both original and new)
                             
                             return (
-                            <Fragment key={mainItem.id}>
-                                <tr className="row-main-item">
-                                    <td>
-                                        <input type="text" className="cell-input" value={mainItem.name} onChange={(e) => updateMainItemName(mainItem.id, mainIndex, e.target.value)} style={{ fontWeight: 700 }} disabled={!canEditAllFields} />
-                                    </td>
-                                    <td></td><td></td><td></td><td></td>
-                                    {activeTab === 'realisasi' && <td></td>}
-                                    <td className="col-actions" style={{ display: 'flex', gap: '4px' }}>
-                                        {canEditAllFields && (
-                                            <>
-                                                <button className="btn-icon btn-add-sub" title="Add Sub Item" onClick={() => addSubItem(mainItem.id, mainIndex)}><PlusCircle size={18} /></button>
-                                                <button className="btn-icon" title="Remove Main Item" onClick={() => removeMainItem(mainItem.id, mainIndex)}><Trash2 size={18} /></button>
-                                            </>
-                                        )}
-                                    </td>
-                                </tr>
-                                {mainItem.subs.map((sub) => {
-                                    const rowTotalInternal = sub.qty * sub.mdy * sub.internalRate;
-                                    const rowTotalBudget = sub.qty * sub.mdy * sub.rate;
-                                    return (
-                                        <tr className="row-sub-item" key={sub.id}>
-                                            <td><input type="text" className="cell-input" value={sub.name} onChange={(e) => updateSubItem(mainItem.id, sub.id, 'name', e.target.value)} style={{ paddingLeft: '2rem' }} disabled={!canEditAllFields} /></td>
-                                            <td><input type="number" className="cell-input align-center" value={sub.qty} onChange={(e) => updateSubItem(mainItem.id, sub.id, 'qty', parseFloat(e.target.value) || 0)} disabled={!canEditAllFields} /></td>
-                                            <td><input type="number" className="cell-input align-center" value={sub.mdy} onChange={(e) => updateSubItem(mainItem.id, sub.id, 'mdy', parseFloat(e.target.value) || 0)} disabled={!canEditAllFields} /></td>
-                                            <td>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 0.5rem' }}>
-                                                    <input type="text" className="cell-input align-right" value={sub.internalRate === 0 ? '' : formatCurrency(sub.internalRate)} onChange={(e) => updateSubItem(mainItem.id, sub.id, 'internalRate', parseCurrency(e.target.value))} style={{ width: '45%' }} placeholder="Rate" disabled={!canEditAllFields} />
-                                                    <div className="cell-readonly align-right" style={{ width: '50%' }}>{formatCurrency(rowTotalInternal)}</div>
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 0.5rem' }}>
-                                                    <input type="text" className="cell-input align-right" value={sub.rate === 0 ? '' : formatCurrency(sub.rate)} onChange={(e) => updateSubItem(mainItem.id, sub.id, 'rate', parseCurrency(e.target.value))} style={{ width: '45%' }} placeholder="Rate" disabled={!canEditAllFields} />
-                                                    <div className="cell-readonly align-right" style={{ width: '50%', fontWeight: 600 }}>{formatCurrency(rowTotalBudget)}</div>
-                                                </div>
-                                            </td>
-                                            {activeTab === 'realisasi' && (
-                                                <td style={{ background: 'rgba(234,179,8,0.05)', padding: '0 0.5rem' }}>
-                                                    <input type="text" className="cell-input align-right" value={sub.actualRate === 0 ? '' : formatCurrency(sub.actualRate)} onChange={(e) => updateSubItem(mainItem.id, sub.id, 'actualRate', parseCurrency(e.target.value))} style={{ width: '100%', color: 'var(--primary)', fontWeight: 600 }} placeholder="Actual Total" disabled={!canEditActualRate(mainItem.id)} />
-                                                </td>
-                                            )}
-                                            <td className="col-actions">
-                                                {canEditAllFields && <button className="btn-icon" title="Remove Sub Item" onClick={() => removeSubItem(mainItem.id, mainIndex, sub.id)}><Trash2 size={18} /></button>}
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </Fragment>
+                                <SortableRow
+                                    key={mainItem.id}
+                                    mainItem={mainItem}
+                                    mainIndex={mainIndex}
+                                    threshold={threshold}
+                                    isRealisasiMode={isRealisasiMode}
+                                    activeTab={activeTab}
+                                    canAddItems={canAddItems}
+                                    canEditAllFields={canEditAllFields}
+                                    formatCurrency={formatCurrency}
+                                    parseCurrency={parseCurrency}
+                                    updateMainItemName={updateMainItemName}
+                                    addSubItem={addSubItem}
+                                    removeMainItem={removeMainItem}
+                                    updateSubItem={updateSubItem}
+                                    removeSubItem={removeSubItem}
+                                    canEditActualRate={canEditActualRate}
+                                    isRealizationForm={isRealizationForm}
+                                    onSubDragEnd={handleSubDragEnd}
+                                />
                             );
                         })}
-                        <tr><td colSpan={activeTab === 'realisasi' ? 7 : 6} style={{ height: '0.5rem' }}></td></tr>
+                    </SortableContext>
+                        <tr><td colSpan={activeTab === 'realisasi' ? 8 : 7} style={{ height: '0.5rem' }}></td></tr>
                         {(canEdit || isRealizationForm || (activeTab === 'realisasi' && canEditRealisasi)) && (
                             <tr>
-                                <td colSpan={activeTab === 'realisasi' ? 7 : 6} style={{ padding: '0.5rem 1rem', borderBottom: 'none' }}>
+                                <td></td>
+                                <td colSpan={activeTab === 'realisasi' ? 6 : 5} style={{ padding: '0.5rem 1rem', borderBottom: 'none' }}>
                                     <button className="btn btn-primary btn-sm" onClick={addMainItem}><Plus size={16} /> Add Main Item</button>
                                 </td>
                             </tr>
@@ -1063,6 +1189,7 @@ function App({ user, token, onLogout }) {
                         </tr>
                     </tbody>
                 </table>
+                </DndContext>
             </div>
 
             {/* METRICS & NOTES FOOTER */}
