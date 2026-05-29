@@ -1017,13 +1017,10 @@ function App({ user, token, onLogout }) {
                 <h1 style={{ fontWeight: '800', letterSpacing: '4px', color: 'var(--primary)', textTransform: 'uppercase', margin: 0 }}>
                     {isRealizationForm ? 'REALISASI' : 'BUDGET'}
                 </h1>
-                {/* Show BUDGET/PO/REALISASI tabs only for approved forms */}
+                {/* Show BUDGET/REALISASI tabs only for approved forms */}
                 {currentStatus === STATUS.APPROVED && loadedForm?.form_type !== 'realization' && (
                     <div style={{ display: 'inline-flex', marginTop: '1rem', background: 'var(--surface)', borderRadius: '8px', padding: '4px', boxShadow: 'var(--shadow-sm)' }}>
                         <button className={`btn btn-sm ${activeTab === 'budget' ? 'btn-primary' : 'btn-secondary'}`} style={{ border: 'none', boxShadow: 'none' }} onClick={() => handleSwitchTab('budget')}>BUDGET</button>
-                        {hasPO && (
-                            <button className={`btn btn-sm ${activeTab === 'po' ? 'btn-primary' : 'btn-secondary'}`} style={{ border: 'none', boxShadow: 'none' }} onClick={() => handleSwitchTab('po')}>PO</button>
-                        )}
                         {hasRealization && (
                             <button className={`btn btn-sm ${activeTab === 'realisasi' ? 'btn-primary' : 'btn-secondary'}`} style={{ border: 'none', boxShadow: 'none' }} onClick={() => handleSwitchTab('realisasi')}>REALISASI</button>
                         )}
@@ -1031,10 +1028,7 @@ function App({ user, token, onLogout }) {
                 )}
             </div>
 
-            {/* PO SECTION - shown when PO tab is active */}
-            {activeTab === 'po' && <POSection />}
-
-                {/* PO NUMBER DISPLAY - removed per user request */}
+            {/* PO NUMBER DISPLAY - removed per user request */}
 
             {/* TOP ACTION BAR */}
             <div className="top-action-bar">
