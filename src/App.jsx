@@ -1017,10 +1017,13 @@ function App({ user, token, onLogout }) {
                 <h1 style={{ fontWeight: '800', letterSpacing: '4px', color: 'var(--primary)', textTransform: 'uppercase', margin: 0 }}>
                     {isRealizationForm ? 'REALISASI' : 'BUDGET'}
                 </h1>
-                {/* Show BUDGET/REALISASI tabs only for approved forms */}
+                {/* Show BUDGET/PO/REALISASI tabs only for approved forms */}
                 {currentStatus === STATUS.APPROVED && loadedForm?.form_type !== 'realization' && (
                     <div style={{ display: 'inline-flex', marginTop: '1rem', background: 'var(--surface)', borderRadius: '8px', padding: '4px', boxShadow: 'var(--shadow-sm)' }}>
                         <button className={`btn btn-sm ${activeTab === 'budget' ? 'btn-primary' : 'btn-secondary'}`} style={{ border: 'none', boxShadow: 'none' }} onClick={() => handleSwitchTab('budget')}>BUDGET</button>
+                        {hasPO && (
+                            <button className={`btn btn-sm ${activeTab === 'po' ? 'btn-primary' : 'btn-secondary'}`} style={{ border: 'none', boxShadow: 'none' }} onClick={() => handleSwitchTab('po')}>PO</button>
+                        )}
                         {hasRealization && (
                             <button className={`btn btn-sm ${activeTab === 'realisasi' ? 'btn-primary' : 'btn-secondary'}`} style={{ border: 'none', boxShadow: 'none' }} onClick={() => handleSwitchTab('realisasi')}>REALISASI</button>
                         )}
@@ -1029,6 +1032,15 @@ function App({ user, token, onLogout }) {
             </div>
 
             {/* PO NUMBER DISPLAY - removed per user request */}
+
+            {/* PO SECTION - shown when PO tab is active - PO numbers are saved with the form */}
+            {activeTab === 'po' && canEditPONumber && (
+                <div style={{ padding: '1rem 1.5rem', background: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--border)', marginBottom: '1rem', display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
+                    <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
+                        PO Numbers are saved when you save the form.
+                    </div>
+                </div>
+            )}
 
             {/* TOP ACTION BAR */}
             <div className="top-action-bar">
