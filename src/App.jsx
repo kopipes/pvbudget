@@ -738,7 +738,7 @@ function App({ user, token, onLogout }) {
         loadForm(id);
     };
 
-    // Handle switching between BUDGET and REALISASI tabs
+    // Handle switching between BUDGET, PO and REALISASI tabs
     const handleSwitchTab = async (tab) => {
         if (tab === 'realisasi') {
             // Reset threshold when switching to REALISASI
@@ -770,7 +770,8 @@ function App({ user, token, onLogout }) {
                     }
                 }
             } catch (e) { console.error('Failed to load realization data', e); }
-        } else if (tab === 'budget') {
+        } else if (tab === 'budget' || tab === 'po') {
+            // For BUDGET and PO tabs, use the loaded form data (which now includes PO Numbers)
             if (loadedForm && loadedForm.data && Array.isArray(loadedForm.data)) {
                 setItems(loadedForm.data);
                 setEventData(prev => ({ ...prev, managementFeePercent: loadedForm.management_fee_pct != null ? loadedForm.management_fee_pct : 10 }));
