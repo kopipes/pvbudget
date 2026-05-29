@@ -1030,15 +1030,6 @@ function App({ user, token, onLogout }) {
 
             {/* PO NUMBER DISPLAY - removed per user request */}
 
-            {/* PO SECTION - shown when PO tab is active - Save PO button */}
-            {activeTab === 'po' && canEditPONumber && (
-                <div style={{ padding: '1rem 1.5rem', background: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--border)', marginBottom: '1rem', display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
-                    <button className="btn btn-sm" style={{ background: '#10b981', color: '#fff' }} onClick={handleSavePO}>
-                        <Save size={16} /> Save PO
-                    </button>
-                </div>
-            )}
-
             {/* TOP ACTION BAR */}
             <div className="top-action-bar">
                 {currentStatus === STATUS.DRAFT && !isCorporate && (
@@ -1110,6 +1101,12 @@ function App({ user, token, onLogout }) {
                 {activeTab === 'realisasi' && canEditRealisasi && realizationFormId && (
                     <button className="btn btn-sm" style={{ background: '#f59e0b', color: '#fff' }} onClick={handleSaveRealisasi}>
                         <Save size={16} /> Simpan Realisasi
+                    </button>
+                )}
+                {/* Save PO button - only when on PO tab and can edit */}
+                {activeTab === 'po' && canEditPONumber && (
+                    <button className="btn btn-sm" style={{ background: '#10b981', color: '#fff' }} onClick={handleSavePO}>
+                        <Save size={16} /> Save PO
                     </button>
                 )}
                 <button className="btn btn-success btn-sm" onClick={handleExportExcel}><FileDown size={16} /> Export XLS</button>
