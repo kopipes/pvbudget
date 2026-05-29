@@ -1222,9 +1222,8 @@ function App({ user, token, onLogout }) {
                             <th className="col-mdy">MDY</th>
                             <th className="col-internal">Internal Budget</th>
                             <th className="col-budget">Budget</th>
-                            {activeTab === 'realisasi' && <th className="col-realisasi" style={{ width: '18%' }}>Realisasi</th>}
-                            {activeTab === 'po' && <th className="col-po">PO Number</th>}
-                            {activeTab === 'realisasi' && <th className="col-po">PO Number</th>}
+                            {activeTab === 'realisasi' && <th className="col-realisasi" style={{ width: '20%' }}>Realisasi</th>}
+                            {activeTab === 'po' && <th className="col-po" style={{ width: '120px' }}>PO Number</th>}
                             <th className="col-actions"></th>
                         </tr>
                     </thead>
