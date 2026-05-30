@@ -1087,8 +1087,8 @@ function App({ user, token, onLogout }) {
                         <RefreshCw size={16} /> Unlock for Revision
                     </button>
                 )}
-                {/* Create PO button - only for approved budget forms without PO */}
-                {currentStatus === STATUS.APPROVED && !hasPO && (!loadedForm?.form_type || loadedForm?.form_type === 'budget') && (
+                {/* Create PO button - only for approved budget forms without PO (Admin/Manager only, not Corporate) */}
+                {currentStatus === STATUS.APPROVED && !hasPO && (!loadedForm?.form_type || loadedForm?.form_type === 'budget') && (isAdmin || isManager) && (
                     <button className="btn btn-sm" style={{ background: '#10b981', color: '#fff' }} onClick={handleCreatePO}>
                         <Receipt size={16} /> Create PO
                     </button>
