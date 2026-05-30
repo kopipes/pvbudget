@@ -34,7 +34,7 @@ const STATUS = {
 function canEditForm(user, form, callback) {
     if (user.role === 'admin') return callback(null, false); // admin can edit approved
     if (user.role === 'corporate') return callback(null, true); // corporate always readonly
-    if (form.status === STATUS.APPROVED) return callback(null, true); // locked
+    if (form.status === STATUS.APPROVED && form.created_by !== user.id) return callback(null, true); // locked (but owner can edit - for Realisasi)
     if (form.created_by === user.id) return callback(null, false); // owner can edit
     return callback(null, true); // default readonly
 }
@@ -92,6 +92,10 @@ app.get('/api/forms', (req, res) => {
         sql += ' AND (f.event LIKE ? OR f.venue LIKE ? OR f.project_no LIKE ?)';
         const w = `%${query}%`;
         params.push(w, w, w);
+    }
+    if (req.query.source_budget_id) {
+        sql += ' AND f.source_budget_id = ?';
+        params.push(req.query.source_budget_id);
     }
 
     // Get total count for pagination
@@ -246,7 +250,7 @@ app.post('/api/forms', (req, res) => {
     }
 
     const sql = `INSERT INTO forms (form_type, project_no, event, venue, periode, periode_start, periode_end, management_fee_pct, data, note, status, version_number, created_by, division_id)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`;
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,1, ?, ?)`;
     const params = [
         form_type || 'budget',
         project_no || '', event || '', venue || '', periode || '', periode_start || '', periode_end || '',

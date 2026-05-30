@@ -5,6 +5,56 @@ const db = require('./db.cjs');
 // Session configuration
 const SESSION_EXPIRY_HOURS = 24;
 
+// Rate limiting configuration
+const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const MAX_LOGIN_ATTEMPTS = 5;
+
+// In-memory rate limiting store
+const loginAttempts = new Map();
+
+// Clean up old rate limit entries periodically
+setInterval(() => {
+    const now = Date.now();
+    for (const [ip, data] of loginAttempts.entries()) {
+        if (now - data.windowStart > RATE_LIMIT_WINDOW_MS) {
+            loginAttempts.delete(ip);
+        }
+    }
+}, 60 * 1000); // Clean up every minute
+
+// Check if IP is rate limited
+function isRateLimited(ip) {
+    const now = Date.now();
+    const data = loginAttempts.get(ip);
+    
+    if (!data) return false;
+    
+    // Reset if window has passed
+    if (now - data.windowStart > RATE_LIMIT_WINDOW_MS) {
+        loginAttempts.delete(ip);
+        return false;
+    }
+    
+    return data.attempts >= MAX_LOGIN_ATTEMPTS;
+}
+
+// Record a failed login attempt
+function recordFailedAttempt(ip) {
+    const now = Date.now();
+    const data = loginAttempts.get(ip);
+    
+    if (!data || now - data.windowStart > RATE_LIMIT_WINDOW_MS) {
+        loginAttempts.set(ip, { attempts: 1, windowStart: now });
+    } else {
+        data.attempts++;
+ }
+}
+
+// Clear rate limit on successful login
+function clearRateLimit(ip) {
+    loginAttempts.delete(ip);
+}
+
 // Generate a random session token
 function generateToken() {
     return crypto.randomBytes(32).toString('hex');
@@ -105,6 +155,15 @@ function setupAuthRoutes(app) {
     // Login
     app.post('/api/auth/login', (req, res) => {
         const { username, password } = req.body;
+        const clientIp = req.ip || req.connection.remoteAddress || 'unknown';
+
+        // Check rate limit
+        if (isRateLimited(clientIp)) {
+            return res.status(429).json({ 
+                error: 'Too many login attempts. Please try again after 15 minutes.',
+                retryAfter: 900 // seconds
+            });
+        }
 
         if (!username || !password) {
             return res.status(400).json({ error: 'Username and password are required' });
@@ -115,13 +174,18 @@ function setupAuthRoutes(app) {
                 return res.status(500).json({ error: err.message });
             }
             if (!user) {
+                recordFailedAttempt(clientIp);
                 return res.status(401).json({ error: 'Invalid username or password' });
             }
 
             const valid = bcrypt.compareSync(password, user.password);
             if (!valid) {
+                recordFailedAttempt(clientIp);
                 return res.status(401).json({ error: 'Invalid username or password' });
             }
+
+            // Clear rate limit on successful login
+            clearRateLimit(clientIp);
 
             const token = generateToken();
             db.run('INSERT INTO sessions (token, user_id) VALUES (?, ?)', [token, user.id], (err) => {

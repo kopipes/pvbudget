@@ -1,0 +1,23 @@
+IMPORTANT: DATABASE BACKUP RULES
+================================
+
+BEFORE doing any of the following operations on the database file (form-builder.sqlite):
+- DELETE
+- REMOVE
+- OVERWRITE
+- MODIFY schema
+- RESET
+
+YOU MUST:
+1. Create a backup copy of the database file first
+2. Test the backup is valid before proceeding
+3. Keep backups in a safe location
+
+DATABASE LOCATION:
+/Users/bob/Documents/Apps/form-builder/server/form-builder.sqlite
+
+BACKUP COMMAND:
+cp server/form-builder.sqlite server/form-builder.sqlite.backup-$(date +%Y%m%d-%H%M%S)
+
+TO RESTORE FROM BACKUP:
+cp server/form-builder.sqlite.backup-YYYYMMDD-HHMMSS server/form-builder.sqlite

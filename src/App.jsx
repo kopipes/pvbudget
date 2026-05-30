@@ -98,7 +98,7 @@ function App({ user, token, onLogout }) {
     const isManager = user.role === 'manager';
     const isUser = user.role === 'user';
     const canEdit = !isReadOnly && !isCorporate && [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus);
-    const canEditRealisasi = !isReadOnly && !isCorporate && (canEdit || (currentStatus === STATUS.APPROVED && activeTab === 'realisasi' && hasRealization));
+    const canEditRealisasi = !isReadOnly && !isCorporate && (canEdit || (currentStatus === STATUS.APPROVED && activeTab === 'realisasi' && hasRealization && String(loadedForm?.created_by) === String(user.id)));
     const canSubmit = [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus) && (currentStatus !== STATUS.REVISION || currentFormId);
     const canApprove = isAdmin || isCorporate;
     const canDelete = isAdmin && [STATUS.DRAFT, STATUS.REVISION, 'archived'].includes(currentStatus);
@@ -390,7 +390,8 @@ function App({ user, token, onLogout }) {
     };
     const canEditActualRate = (mainId) => {
         // In REALISASI mode: both old and new items can edit actualRate
-        return (isRealizationForm || (activeTab === 'realisasi')) && canEditRealisasi;
+        // Admin can always edit, or form owner can edit
+        return (isRealizationForm || (activeTab === 'realisasi')) && (isAdmin || canEditRealisasi);
     };
     const updateSubItem = (mainId, subId, field, value) => {
         // For actualRate field, check canEditActualRate
@@ -713,7 +714,8 @@ function App({ user, token, onLogout }) {
                     try {
                         const realCheck = await fetch(`${API}/api/forms?source_budget_id=${id}`, { headers: authHeaders });
                         if (realCheck.ok) {
-                            const realizations = await realCheck.json();
+                            const result = await realCheck.json();
+                            const realizations = Array.isArray(result) ? result : (result.data || []);
                             setHasRealization(realizations.length > 0);
                         }
                     } catch (e) { setHasRealization(false); }
@@ -752,7 +754,8 @@ function App({ user, token, onLogout }) {
             try {
                 const realCheck = await fetch(`${API}/api/forms?source_budget_id=${currentFormId}`, { headers: authHeaders });
                 if (realCheck.ok) {
-                    const realizations = await realCheck.json();
+                    const result = await realCheck.json();
+                    const realizations = Array.isArray(result) ? result : (result.data || []);
                     if (realizations.length > 0) {
                         setRealizationFormId(realizations[0].id);
                         const realizationRes = await fetch(`${API}/api/forms/${realizations[0].id}`, { headers: authHeaders });

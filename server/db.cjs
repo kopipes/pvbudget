@@ -1,6 +1,11 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const bcrypt = require('bcryptjs');
+const dotenv = require('dotenv');
+
+// Load environment variables
+dotenv.config({ path: path.join(__dirname, '..', '.env.development') });
+dotenv.config({ path: path.join(__dirname, '..', '.env.production') });
 
 const dbPath = path.resolve(__dirname, 'form-builder.sqlite');
 const db = new sqlite3.Database(dbPath, (err) => {
@@ -14,7 +19,7 @@ const db = new sqlite3.Database(dbPath, (err) => {
 
         // Create divisions table
         db.run(`CREATE TABLE IF NOT EXISTS divisions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       description TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -123,10 +128,16 @@ const db = new sqlite3.Database(dbPath, (err) => {
                 return;
             }
             if (row.count === 0) {
-                const hash = bcrypt.hashSync('admin123', 10);
-                const hashCorp = bcrypt.hashSync('corp123', 10);
-                const hashMgr = bcrypt.hashSync('manager123', 10);
-                const hashUser = bcrypt.hashSync('user123', 10);
+                // Get passwords from environment variables
+                const adminPassword = process.env.DEFAULT_ADMIN_PASSWORD || 'admin123';
+                const corpPassword = process.env.DEFAULT_CORPORATE_PASSWORD || 'corp123';
+                const mgrPassword = process.env.DEFAULT_MANAGER_PASSWORD || 'manager123';
+                const userPassword = process.env.DEFAULT_USER_PASSWORD || 'user123';
+
+                const hash = bcrypt.hashSync(adminPassword, 10);
+                const hashCorp = bcrypt.hashSync(corpPassword, 10);
+                const hashMgr = bcrypt.hashSync(mgrPassword, 10);
+                const hashUser = bcrypt.hashSync(userPassword, 10);
 
                 // Create default divisions
                 db.run(`INSERT INTO divisions (name, description) VALUES ('Finance', 'Finance and Accounting Division')`, () => {});
@@ -139,7 +150,7 @@ const db = new sqlite3.Database(dbPath, (err) => {
                     ['admin', hash, 'Administrator', 'admin'],
                     (err) => {
                         if (err) console.error('Error seeding admin user', err.message);
-                        else console.log('Default admin user created (admin / admin123)');
+                        else console.log(`Default admin user created (admin / ${adminPassword})`);
                     }
                 );
                 db.run(
@@ -147,7 +158,7 @@ const db = new sqlite3.Database(dbPath, (err) => {
                     ['corporate', hashCorp, 'Corporate Viewer', 'corporate'],
                     (err) => {
                         if (err) console.error('Error seeding corporate user', err.message);
-                        else console.log('Default corporate user created (corporate / corp123)');
+                        else console.log(`Default corporate user created (corporate / ${corpPassword})`);
                     }
                 );
                 db.run(
@@ -155,7 +166,7 @@ const db = new sqlite3.Database(dbPath, (err) => {
                     ['manager', hashMgr, 'Manager', 'manager'],
                     (err) => {
                         if (err) console.error('Error seeding manager user', err.message);
-                        else console.log('Default manager user created (manager / manager123)');
+                        else console.log(`Default manager user created (manager / ${mgrPassword})`);
                     }
                 );
                 db.run(
@@ -163,7 +174,7 @@ const db = new sqlite3.Database(dbPath, (err) => {
                     ['user', hashUser, 'User', 'user'],
                     (err) => {
                         if (err) console.error('Error seeding user', err.message);
-                        else console.log('Default user created (user / user123)');
+                        else console.log(`Default user created (user / ${userPassword})`);
                     }
                 );
             }
