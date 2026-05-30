@@ -75,9 +75,14 @@ function Dashboard({ user, token, onLogout, onOpenForm }) {
       const results = await Promise.all(promises.map(p => p.catch(() => ({ ok: false, json: async () => [] }))));
       const [allFormsResult, myFormsResult, pendingResult] = results;
 
-      const allForms = allFormsResult.ok ? await allFormsResult.json() : [];
-      const mine = myFormsResult.ok ? await myFormsResult.json() : [];
-      const pending = pendingResult && pendingResult.ok ? await pendingResult.json() : [];
+      const rawAll = allFormsResult.ok ? await allFormsResult.json() : {data:[]};
+      const rawMine = myFormsResult.ok ? await myFormsResult.json() : [];
+      const rawPending = (pendingResult && pendingResult.ok) ? await pendingResult.json() : [];
+      
+      // Handle both array and {data:[]} response formats
+      const allForms = Array.isArray(rawAll) ? rawAll : (rawAll.data || []);
+      const mine = Array.isArray(rawMine) ? rawMine : (rawMine.data || []);
+      const pending = Array.isArray(rawPending) ? rawPending : (rawPending.data || []);
 
       // Build stats
       const byStatus = {};
@@ -276,7 +281,7 @@ function Dashboard({ user, token, onLogout, onOpenForm }) {
               {(isAdmin || isCorporate) && (
                 <>
                   <button className={`dash-filter-tab ${filterStatus === 'revision' ? 'active' : ''}`} onClick={() => setFilterStatus('revision')}>Revision</button>
-                  <button className={`dash-filter-tab ${filterStatus === 'archived' ? 'active' : ''}`} OnClick={() => setFilterStatus('archived')}>Archived</button>
+                  <button className={`dash-filter-tab ${filterStatus === 'archived' ? 'active' : ''}`} onClick={() => setFilterStatus('archived')}>Archived</button>
                 </>
               )}
             </div>

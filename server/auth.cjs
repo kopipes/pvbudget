@@ -2,9 +2,21 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const db = require('./db.cjs');
 
+// Session configuration
+const SESSION_EXPIRY_HOURS = 24;
+
 // Generate a random session token
 function generateToken() {
     return crypto.randomBytes(32).toString('hex');
+}
+
+// Check if session is expired
+function isSessionExpired(session) {
+    if (!session.created_at) return false;
+    const createdAt = new Date(session.created_at);
+    const now = new Date();
+    const hoursDiff = (now - createdAt) / (1000 * 60 * 60);
+    return hoursDiff > SESSION_EXPIRY_HOURS;
 }
 
 // Auth middleware — attaches req.user if valid token
@@ -16,34 +28,51 @@ function authMiddleware(req, res, next) {
 
     const token = authHeader.slice(7);
 
-    db.get(
-        `SELECT u.id, u.username, u.display_name, u.role, u.manager_id, u.division_id, d.name as division_name
-     FROM sessions s
-     JOIN users u ON u.id = s.user_id
-     LEFT JOIN divisions d ON u.division_id = d.id
-     WHERE s.token = ?`,
-        [token],
-        (err, user) => {
-            if (err) {
-                return res.status(500).json({ error: 'Internal server error' });
-            }
-            if (!user) {
-                return res.status(401).json({ error: 'Invalid or expired session' });
-            }
-            // Get divisions managed by this manager
-            if (user.role === 'manager') {
-                db.all(`SELECT division_id FROM manager_divisions WHERE manager_id = ?`, [user.id], (err, divs) => {
-                    user.managedDivisions = divs.map(r => r.division_id);
+    // First, check if session exists and is not expired
+    db.get('SELECT * FROM sessions WHERE token = ?', [token], (err, session) => {
+        if (err) {
+            return res.status(500).json({ error: 'Internal server error' });
+        }
+        if (!session) {
+            return res.status(401).json({ error: 'Invalid or expired session' });
+        }
+        
+        // Check session expiration
+        if (isSessionExpired(session)) {
+            // Clean up expired session
+            db.run('DELETE FROM sessions WHERE token = ?', [token], () => {});
+            return res.status(401).json({ error: 'Session expired. Please log in again.' });
+        }
+
+        // Get user data
+        db.get(
+            `SELECT u.id, u.username, u.display_name, u.role, u.manager_id, u.division_id, d.name as division_name
+             FROM users u
+             LEFT JOIN divisions d ON u.division_id = d.id
+             WHERE u.id = ?`,
+            [session.user_id],
+            (err, user) => {
+                if (err) {
+                    return res.status(500).json({ error: 'Internal server error' });
+                }
+                if (!user) {
+                    return res.status(401).json({ error: 'User not found' });
+                }
+                // Get divisions managed by this manager
+                if (user.role === 'manager') {
+                    db.all(`SELECT division_id FROM manager_divisions WHERE manager_id = ?`, [user.id], (err, divs) => {
+                        user.managedDivisions = divs.map(r => r.division_id);
+                        req.user = user;
+                        next();
+                    });
+                } else {
+                    user.managedDivisions = [];
                     req.user = user;
                     next();
-                });
-            } else {
-                user.managedDivisions = [];
-                req.user = user;
-                next();
+                }
             }
-        }
-    );
+        );
+    });
 }
 
 // Role-checking middleware factory
@@ -55,6 +84,21 @@ function requireRole(...roles) {
         next();
     };
 }
+
+// Cleanup expired sessions - call periodically
+function cleanupExpiredSessions() {
+    db.all('SELECT token, created_at FROM sessions', [], (err, sessions) => {
+        if (err) return;
+        sessions.forEach(session => {
+            if (isSessionExpired(session)) {
+                db.run('DELETE FROM sessions WHERE token = ?', [session.token], () => {});
+            }
+        });
+    });
+}
+
+// Run cleanup every hour
+setInterval(cleanupExpiredSessions, 60 * 60 * 1000);
 
 // Setup auth routes on the given express app
 function setupAuthRoutes(app) {

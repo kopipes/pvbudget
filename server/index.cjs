@@ -67,10 +67,15 @@ function buildFormVisibility(user, extraField = '') {
     };
 }
 
-// 1. LIST /api/forms (with filters)
+// 1. LIST /api/forms (with filters + pagination)
 app.get('/api/forms', (req, res) => {
-    const { query, type, status } = req.query;
+    const { query, type, status, page = 1, limit = 50 } = req.query;
     const vis = buildFormVisibility(req.user);
+
+    // Parse pagination params
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
+    const offset = (pageNum - 1) * limitNum;
 
     let sql = `${vis.select} ${vis.join} WHERE 1=1 ${vis.where}`;
     let params = [...vis.params];
@@ -89,11 +94,26 @@ app.get('/api/forms', (req, res) => {
         params.push(w, w, w);
     }
 
-    sql += ' ORDER BY f.updated_at DESC';
-
-    db.all(sql, params, (err, rows) => {
+    // Get total count for pagination
+    const countSql = sql.replace(vis.select, 'SELECT COUNT(*) as total');
+    db.get(countSql, params, (err, countRow) => {
         if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
+        const total = countRow ? countRow.total : 0;
+
+        // Add pagination
+        sql += ' ORDER BY f.updated_at DESC LIMIT ? OFFSET ?';
+        db.all(sql, [...params, limitNum, offset], (err, rows) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({
+                data: rows,
+                pagination: {
+                    page: pageNum,
+                    limit: limitNum,
+                    total: total,
+                    totalPages: Math.ceil(total / limitNum)
+                }
+            });
+        });
     });
 });
 
@@ -213,13 +233,25 @@ app.post('/api/forms', (req, res) => {
         return res.status(403).json({ error: 'Corporate users cannot create forms' });
     }
 
+    // Validate management_fee_pct is a valid number
+    if (management_fee_pct != null && (typeof management_fee_pct !== 'number' || management_fee_pct < 0 || management_fee_pct > 100)) {
+        return res.status(400).json({ error: 'Management fee percentage must be between 0 and 100' });
+    }
+
+    // Validate data structure if provided
+    if (data !== undefined && data !== null) {
+        if (!Array.isArray(data)) {
+            return res.status(400).json({ error: 'Form data must be an array' });
+        }
+    }
+
     const sql = `INSERT INTO forms (form_type, project_no, event, venue, periode, periode_start, periode_end, management_fee_pct, data, note, status, version_number, created_by, division_id)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`;
     const params = [
         form_type || 'budget',
-        project_no, event, venue, periode, periode_start, periode_end,
+        project_no || '', event || '', venue || '', periode || '', periode_start || '', periode_end || '',
         management_fee_pct != null ? management_fee_pct : 10,
-        JSON.stringify(data), note,
+        JSON.stringify(data || []), note || '',
         STATUS.DRAFT, req.user.id, division_id || req.user.division_id || null
     ];
 
@@ -233,6 +265,18 @@ app.post('/api/forms', (req, res) => {
 app.put('/api/forms/:id', (req, res) => {
     const { id } = req.params;
     const { project_no, event, venue, periode, periode_start, periode_end, management_fee_pct, data, note, division_id } = req.body;
+
+    // Validate management_fee_pct is a valid number
+    if (management_fee_pct != null && (typeof management_fee_pct !== 'number' || management_fee_pct < 0 || management_fee_pct > 100)) {
+        return res.status(400).json({ error: 'Management fee percentage must be between 0 and 100' });
+    }
+
+    // Validate data structure if provided
+    if (data !== undefined && data !== null) {
+        if (!Array.isArray(data)) {
+            return res.status(400).json({ error: 'Form data must be an array' });
+        }
+    }
 
     db.get('SELECT * FROM forms WHERE id = ?', [id], (err, form) => {
         if (err) return res.status(500).json({ error: err.message });
@@ -255,9 +299,9 @@ app.put('/api/forms/:id', (req, res) => {
 
         const sql = `UPDATE forms SET project_no = ?, event = ?, venue = ?, periode = ?, periode_start = ?, periode_end = ?, management_fee_pct = ?, data = ?, note = ?, division_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
         const params = [
-            project_no, event, venue, periode, periode_start, periode_end,
+            project_no || '', event || '', venue || '', periode || '', periode_start || '', periode_end || '',
             management_fee_pct != null ? management_fee_pct : 10,
-            JSON.stringify(data), note, division_id, id
+            JSON.stringify(data || []), note || '', division_id, id
         ];
 
         db.run(sql, params, function (err) {
@@ -462,6 +506,7 @@ app.put('/api/forms/:id/unlock', (req, res) => {
 });
 
 // 15. POST /api/forms/:id/create-po (Create PO from approved budget)
+// Allowed: User (form creator), Manager, Admin (NOT Corporate)
 app.post('/api/forms/:id/create-po', (req, res) => {
     if (req.user.role === 'corporate') {
         return res.status(403).json({ error: 'Corporate users cannot create PO' });

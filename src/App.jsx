@@ -1,13 +1,13 @@
-import { useState, Fragment, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Trash2, PlusCircle, Save, FileDown, FilePlus, Search, X, AlertTriangle, LogOut, Shield, Building2, Send, Check, RefreshCw, Clock, CheckCircle, XCircle, History, Eye, LayoutDashboard, Receipt, GripVertical } from 'lucide-react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 import * as XLSX from 'xlsx';
 import UserManagement from './UserManagement.jsx';
 import DivisionManagement from './DivisionManagement.jsx';
 import Dashboard from './Dashboard.jsx';
 import SortableRow from './SortableRow.jsx';
+import { TAX_RATES } from './config.js';
 import './App.css';
 
 const API = import.meta.env.VITE_API_URL || '';
@@ -426,12 +426,12 @@ function App({ user, token, onLogout }) {
     const managementFee = subtotalBudget * (mgmtPct / 100);
     const totalInternal = subtotalInternal;
     const totalBudget = subtotalBudget + managementFee;
-    const ppn = totalBudget * 0.11;
+    const ppn = totalBudget * TAX_RATES.PPN;
     const grandTotalInternal = totalInternal;
     const grandTotalBudget = totalBudget + ppn;
     const grandTotalRealisasi = subtotalRealisasi;
     const afterPpn = totalBudget;
-    const pph = totalBudget * 0.02;
+    const pph = totalBudget * TAX_RATES.PPH;
     const afterPph = afterPpn - pph;
     const profitLoss = afterPph - grandTotalInternal;
     const profitLossRealisasi = grandTotalRealisasi - grandTotalInternal;
