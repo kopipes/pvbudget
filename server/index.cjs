@@ -502,14 +502,14 @@ app.post('/api/forms/:id/create-po', (req, res) => {
     });
 });
 
-// 16. PUT /api/forms/:id/po (Update PO number - Manager/Corporate only)
+// 16. PUT /api/forms/:id/po (Update PO number - Admin/Manager/Corporate)
 app.put('/api/forms/:id/po', (req, res) => {
     const { id } = req.params;
     const { po_number } = req.body;
 
-    // Only Manager and Corporate can update PO Number
-    if (req.user.role !== 'manager' && req.user.role !== 'corporate') {
-        return res.status(403).json({ error: 'Only Manager or Corporate can update PO Number' });
+    // Admin, Manager, and Corporate can update PO Number
+    if (req.user.role !== 'admin' && req.user.role !== 'manager' && req.user.role !== 'corporate') {
+        return res.status(403).json({ error: 'Only Admin, Manager, or Corporate can update PO Number' });
     }
 
     if (!po_number || !po_number.trim()) {
