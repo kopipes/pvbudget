@@ -45,7 +45,7 @@ function canEditForm(user, form, callback) {
 // User: own forms only
 function buildFormVisibility(user, extraField = '') {
     const sqlExtra = extraField ? `, ${extraField}` : '';
-    let join = `LEFT JOIN users u ON f.created_by = u.id LEFT JOIN divisions div ON f.division_id = div.id`;
+    let join = `LEFT JOIN users u ON f.created_by = u.id LEFT JOIN divisions div ON COALESCE(f.division_id, u.division_id) = div.id`;
     let where = '';
     let params = [];
 
@@ -61,7 +61,7 @@ function buildFormVisibility(user, extraField = '') {
 
     return {
         select: `SELECT f.*, u.display_name as creator_name, u.username as creator_username, div.name as division_name${sqlExtra}`,
-        join: ` FROM forms f LEFT JOIN users u ON f.created_by = u.id LEFT JOIN divisions div ON f.division_id = div.id`,
+        join: ` FROM forms f LEFT JOIN users u ON f.created_by = u.id LEFT JOIN divisions div ON COALESCE(f.division_id, u.division_id) = div.id`,
         where,
         params
     };
@@ -149,7 +149,7 @@ app.get('/api/forms/:id', (req, res) => {
           (SELECT display_name FROM users WHERE id = f.rejected_by) as rejector_name
          FROM forms f
          LEFT JOIN users u ON f.created_by = u.id
-         LEFT JOIN divisions div ON f.division_id = div.id
+         LEFT JOIN divisions div ON COALESCE(f.division_id, u.division_id) = div.id
          WHERE f.id = ?`,
         [id],
         (err, row) => {
@@ -181,7 +181,7 @@ app.get('/api/forms/pending', (req, res) => {
           (SELECT display_name FROM users WHERE id = f.approved_by_1) as approver_1_name
          FROM forms f
          LEFT JOIN users u ON f.created_by = u.id
-         LEFT JOIN divisions div ON f.division_id = div.id
+         LEFT JOIN divisions div ON COALESCE(f.division_id, u.division_id) = div.id
          WHERE f.status = ?
          ORDER BY f.submitted_at ASC`,
         [STATUS.PENDING],
@@ -197,7 +197,8 @@ app.get('/api/forms/my', (req, res) => {
     const { status } = req.query;
     let sql = `SELECT f.*, div.name as division_name
                FROM forms f
-               LEFT JOIN divisions div ON f.division_id = div.id
+               LEFT JOIN users u ON f.created_by = u.id
+               LEFT JOIN divisions div ON COALESCE(f.division_id, u.division_id) = div.id
                WHERE f.created_by = ?`;
     let params = [req.user.id];
 
