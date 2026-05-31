@@ -783,6 +783,7 @@ function App({ user, token, onLogout }) {
             if (loadedForm && loadedForm.data && Array.isArray(loadedForm.data)) {
                 setItems(loadedForm.data);
                 setEventData(prev => ({ ...prev, managementFeePercent: loadedForm.management_fee_pct != null ? loadedForm.management_fee_pct : 10 }));
+                setPoNumber(loadedForm.po_number || '');
             }
         }
     };
