@@ -1113,7 +1113,7 @@ function App({ user, token, onLogout }) {
                 )}
                 {/* Save PO button - only when on PO tab and can edit */}
                 {activeTab === 'po' && canEditPONumber && (
-                    <button className="btn btn-sm" style={{ background: '#10b981', color: '#fff' }} onClick={handleSavePO}>
+                    <button className="btn btn-sm" style={{ background: '#10b981', color: '#fff' }} onClick={handleSavePONumber}>
                         <Save size={16} /> Save PO
                     </button>
                 )}
