@@ -657,7 +657,70 @@ app.post('/api/forms/:id/create-realization', (req, res) => {
     });
 });
 
-// Serve static frontend files in production
+ // ===== DIVISIONS API ROUTES =====
+ app.use('/api/divisions', authMiddleware);
+
+ app.get('/api/divisions', (req, res) => {
+     db.all('SELECT * FROM divisions ORDER BY name ASC', (err, rows) => {
+         if (err) return res.status(500).json({ error: err.message });
+         res.json(rows);
+     });
+ });
+
+ app.post('/api/divisions', (req, res) => {
+     if (req.user.role !== 'admin') {
+         return res.status(403).json({ error: 'Only admin can create divisions' });
+     }
+     const { name, description } = req.body;
+     if (!name || !name.trim()) {
+         return res.status(400).json({ error: 'Division name is required' });
+     }
+     db.run('INSERT INTO divisions (name, description) VALUES (?, ?)', [name.trim(), description || ''], function (err) {
+         if (err) return res.status(500).json({ error: err.message });
+         res.status(201).json({ id: this.lastID, name: name.trim(), description: description || '' });
+     });
+ });
+
+ app.put('/api/divisions/:id', (req, res) => {
+     if (req.user.role !== 'admin') {
+         return res.status(403).json({ error: 'Only admin can update divisions' });
+     }
+     const { id } = req.params;
+     const { name, description } = req.body;
+     if (!name || !name.trim()) {
+         return res.status(400).json({ error: 'Division name is required' });
+     }
+     db.run('UPDATE divisions SET name = ?, description = ? WHERE id = ?', [name.trim(), description || '', id], function (err) {
+         if (err) return res.status(500).json({ error: err.message });
+         res.json({ id, name: name.trim(), description: description || '' });
+     });
+ });
+
+ app.delete('/api/divisions/:id', (req, res) => {
+     if (req.user.role !== 'admin') {
+         return res.status(403).json({ error: 'Only admin can delete divisions' });
+     }
+     const { id } = req.params;
+     // Check if division is in use
+     db.get('SELECT COUNT(*) as count FROM users WHERE division_id = ?', [id], (err, row) => {
+         if (err) return res.status(500).json({ error: err.message });
+         if (row && row.count > 0) {
+             return res.status(400).json({ error: 'Cannot delete division that is assigned to users' });
+         }
+         db.get('SELECT COUNT(*) as count FROM forms WHERE division_id = ?', [id], (err2, row2) => {
+             if (err2) return res.status(500).json({ error: err2.message });
+             if (row2 && row2.count > 0) {
+                 return res.status(400).json({ error: 'Cannot delete division that is assigned to forms' });
+             }
+             db.run('DELETE FROM divisions WHERE id = ?', [id], function (err3) {
+                 if (err3) return res.status(500).json({ error: err3.message });
+                 res.json({ message: 'Division deleted successfully' });
+             });
+         });
+     });
+ });
+
+ // Serve static frontend files in production
 const distPath = path.join(__dirname, '..', 'dist');
 app.use(express.static(distPath));
 app.use((req, res) => {
