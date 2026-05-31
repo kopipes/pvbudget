@@ -98,7 +98,7 @@ function App({ user, token, onLogout }) {
     const isManager = user.role === 'manager';
     const isUser = user.role === 'user';
     const canEdit = !isReadOnly && !isCorporate && [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus);
-    const canEditRealisasi = !isReadOnly && !isCorporate && (canEdit || (currentStatus === STATUS.APPROVED && activeTab === 'realisasi' && hasRealization && String(loadedForm?.created_by) === String(user.id)));
+    const canEditRealisasi = !isReadOnly && !isCorporate && (canEdit || (currentStatus === STATUS.APPROVED && activeTab === 'realisasi' && hasRealization && (isAdmin || String(loadedForm?.created_by) === String(user.id))));
     const canSubmit = [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus) && (currentStatus !== STATUS.REVISION || currentFormId);
     const canApprove = isAdmin || isCorporate;
     const canDelete = isAdmin && [STATUS.DRAFT, STATUS.REVISION, 'archived'].includes(currentStatus);
