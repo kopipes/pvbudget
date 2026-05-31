@@ -477,23 +477,26 @@ function App({ user, token, onLogout }) {
         } catch (e) { await showDialog('alert', 'Failed to create PO', 'Error'); }
     };
 
-    // Handle saving PO (saves all PO numbers in the form data)
-    const handleSavePO = async () => {
+    // Handle saving PO Number for the main PO (saves to form.po_number field)
+    const handleSavePONumber = async () => {
         if (!currentFormId) return;
+        if (!poNumber || !poNumber.trim()) {
+            await showDialog('alert', 'Please enter a PO Number', 'Error');
+            return;
+        }
         try {
             const res = await fetch(`${API}/api/forms/${currentFormId}/po`, { 
                 method: 'PUT', 
                 headers: authHeaders, 
-                body: JSON.stringify({ data: items }) 
+                body: JSON.stringify({ po_number: poNumber.trim() }) 
             });
             if (!res.ok) {
-                await showDialog('alert', 'Failed to save PO Numbers', 'Error');
+                const data = await res.json();
+                await showDialog('alert', data.error || 'Failed to save PO Number', 'Error');
                 return;
             }
-            // Update loadedForm with current items so switching tabs shows updated PO Numbers
-            setLoadedForm(prev => ({ ...prev, data: JSON.parse(JSON.stringify(items)) }));
-            await showDialog('alert', 'PO Numbers saved successfully!', 'Success');
-        } catch (e) { await showDialog('alert', 'Failed to save PO Numbers', 'Error'); }
+            await showDialog('alert', 'PO Number saved successfully!', 'Success');
+        } catch (e) { await showDialog('alert', 'Failed to save PO Number', 'Error'); }
     };
 
     // Check if user can edit PO Number (Admin, Manager, or Corporate)
