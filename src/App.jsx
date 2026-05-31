@@ -481,7 +481,7 @@ function App({ user, token, onLogout }) {
     const handleSavePO = async () => {
         if (!currentFormId) return;
         try {
-            const res = await fetch(`${API}/api/forms/${currentFormId}`, { 
+            const res = await fetch(`${API}/api/forms/${currentFormId}/po`, { 
                 method: 'PUT', 
                 headers: authHeaders, 
                 body: JSON.stringify({ data: items }) 
