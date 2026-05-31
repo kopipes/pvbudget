@@ -52,7 +52,7 @@ function buildFormVisibility(user, extraField = '') {
     if (user.role === 'admin' || user.role === 'corporate') {
         where = '';
     } else if (user.role === 'manager') {
-        where = ` AND (f.created_by = ? OR u.manager_id = ? OR f.status = ? OR f.division_id IN (SELECT division_id FROM manager_divisions WHERE manager_id = ?))`;
+        where = ` AND (f.created_by = ? OR u.manager_id = ? OR f.status = ? OR COALESCE(f.division_id, u.division_id) IN (SELECT division_id FROM manager_divisions WHERE manager_id = ?))`;
         params = [user.id, user.id, STATUS.APPROVED, user.id];
     } else {
         where = ` AND (f.created_by = ? OR f.status = ?)`;
