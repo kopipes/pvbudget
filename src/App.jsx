@@ -1027,12 +1027,18 @@ function App({ user, token, onLogout }) {
                 {currentStatus === STATUS.APPROVED && loadedForm?.form_type !== 'realization' && (
                     <div style={{ display: 'inline-flex', marginTop: '1rem', background: 'var(--surface)', borderRadius: '8px', padding: '4px', boxShadow: 'var(--shadow-sm)' }}>
                         <button className={`btn btn-sm ${activeTab === 'budget' ? 'btn-primary' : 'btn-secondary'}`} style={{ border: 'none', boxShadow: 'none' }} onClick={() => handleSwitchTab('budget')}>BUDGET</button>
+                        {hasPO && (
+                            <button className={`btn btn-sm ${activeTab === 'po' ? 'btn-primary' : 'btn-secondary'}`} style={{ border: 'none', boxShadow: 'none' }} onClick={() => handleSwitchTab('po')}>PO</button>
+                        )}
                         {hasRealization && (
                             <button className={`btn btn-sm ${activeTab === 'realisasi' ? 'btn-primary' : 'btn-secondary'}`} style={{ border: 'none', boxShadow: 'none' }} onClick={() => handleSwitchTab('realisasi')}>REALISASI</button>
                         )}
                     </div>
                 )}
             </div>
+
+            {/* PO NUMBER DISPLAY */}
+            {activeTab === 'po' && hasPO && <POSection />}
 
             {/* TOP ACTION BAR */}
             <div className="top-action-bar">
@@ -1105,6 +1111,12 @@ function App({ user, token, onLogout }) {
                 {activeTab === 'realisasi' && canEditRealisasi && realizationFormId && (
                     <button className="btn btn-sm" style={{ background: '#f59e0b', color: '#fff' }} onClick={handleSaveRealisasi}>
                         <Save size={16} /> Simpan Realisasi
+                    </button>
+                )}
+                {/* Save PO button - only when on PO tab and can edit */}
+                {activeTab === 'po' && canEditPONumber && (
+                    <button className="btn btn-sm" style={{ background: '#10b981', color: '#fff' }} onClick={handleSavePONumber}>
+                        <Save size={16} /> Save PO
                     </button>
                 )}
                 <button className="btn btn-success btn-sm" onClick={handleExportExcel}><FileDown size={16} /> Export XLS</button>
