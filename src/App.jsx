@@ -1037,7 +1037,8 @@ function App({ user, token, onLogout }) {
                 )}
             </div>
 
-            {/* PO NUMBER DISPLAY - removed per user request */}
+            {/* PO NUMBER DISPLAY */}
+            {activeTab === 'po' && hasPO && <POSection />}
 
             {/* TOP ACTION BAR */}
             <div className="top-action-bar">
