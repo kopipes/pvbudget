@@ -477,26 +477,31 @@ function App({ user, token, onLogout }) {
         } catch (e) { await showDialog('alert', 'Failed to create PO', 'Error'); }
     };
 
-    // Handle saving PO Number for the main PO (saves to form.po_number field)
+    // Handle saving PO Number for the main PO (saves to form.po_number field and items)
     const handleSavePONumber = async () => {
         if (!currentFormId) return;
-        if (!poNumber || !poNumber.trim()) {
-            await showDialog('alert', 'Please enter a PO Number', 'Error');
-            return;
-        }
         try {
-            const res = await fetch(`${API}/api/forms/${currentFormId}/po`, { 
+            // Save the form with current items (including per-row PO Numbers)
+            const dataToSave = {
+                project_no: eventData.projectNo, event: eventData.name, venue: eventData.venue,
+                periode: eventData.periode, periode_start: eventData.periodeStart, periode_end: eventData.periodeEnd,
+                management_fee_pct: eventData.managementFeePercent, note: eventData.note,
+                division_id: selectedDivisionId || null, data: items, po_number: poNumber
+            };
+            const res = await fetch(`${API}/api/forms/${currentFormId}`, { 
                 method: 'PUT', 
                 headers: authHeaders, 
-                body: JSON.stringify({ po_number: poNumber.trim() }) 
+                body: JSON.stringify(dataToSave) 
             });
             if (!res.ok) {
                 const data = await res.json();
-                await showDialog('alert', data.error || 'Failed to save PO Number', 'Error');
+                await showDialog('alert', data.error || 'Failed to save PO', 'Error');
                 return;
             }
+            // Update loadedForm with current items so tab switching preserves data
+            setLoadedForm(prev => prev ? { ...prev, data: items, po_number: poNumber } : null);
             await showDialog('alert', 'PO Number saved successfully!', 'Success');
-        } catch (e) { await showDialog('alert', 'Failed to save PO Number', 'Error'); }
+        } catch (e) { await showDialog('alert', 'Failed to save PO', 'Error'); }
     };
 
     // Check if user can edit PO Number (Admin, Manager, or Corporate)
