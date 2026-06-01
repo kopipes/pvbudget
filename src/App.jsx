@@ -477,16 +477,16 @@ function App({ user, token, onLogout }) {
         } catch (e) { await showDialog('alert', 'Failed to create PO', 'Error'); }
     };
 
-    // Handle saving PO Number for the main PO (saves to form.po_number field and items)
+    // Handle saving PO Number - updates both main form PO Number and per-row PO Numbers
     const handleSavePONumber = async () => {
         if (!currentFormId) return;
         try {
-            // Save the form with current items (including per-row PO Numbers)
+            // First, save the main form data including per-row PO Numbers using the standard update endpoint
             const dataToSave = {
                 project_no: eventData.projectNo, event: eventData.name, venue: eventData.venue,
                 periode: eventData.periode, periode_start: eventData.periodeStart, periode_end: eventData.periodeEnd,
                 management_fee_pct: eventData.managementFeePercent, note: eventData.note,
-                division_id: selectedDivisionId || null, data: items, po_number: poNumber
+                division_id: selectedDivisionId || null, data: items
             };
             const res = await fetch(`${API}/api/forms/${currentFormId}`, { 
                 method: 'PUT', 
@@ -495,11 +495,11 @@ function App({ user, token, onLogout }) {
             });
             if (!res.ok) {
                 const data = await res.json();
-                await showDialog('alert', data.error || 'Failed to save PO', 'Error');
+                await showDialog('alert', data.error || 'Failed to save form data', 'Error');
                 return;
             }
-            // Update loadedForm with current items so tab switching preserves data
-            setLoadedForm(prev => prev ? { ...prev, data: items, po_number: poNumber } : null);
+            // Update loadedForm with current items
+            setLoadedForm(prev => prev ? { ...prev, data: items } : null);
             await showDialog('alert', 'PO Number saved successfully!', 'Success');
         } catch (e) { await showDialog('alert', 'Failed to save PO', 'Error'); }
     };
