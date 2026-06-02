@@ -32,11 +32,12 @@ const STATUS = {
 
 // ---- Check if user can edit a form ----
 function canEditForm(user, form, callback) {
-    if (user.role === 'admin') return callback(null, false); // admin can edit anything
-    if (user.role === 'corporate') return callback(null, true); // corporate always readonly
-    // For non-approved forms: owner can always edit
+    const role = user.role?.toLowerCase();
+    if (role === 'admin') return callback(null, false); // admin can edit anything
+    if (role === 'corporate') return callback(null, true); // corporate always readonly
+    // For non-approved forms: owner can always edit (use string comparison to avoid type mismatch)
     if (form.status !== STATUS.APPROVED) {
-        return callback(null, form.created_by !== user.id);
+        return callback(null, String(form.created_by) !== String(user.id));
     }
     // Approved forms are locked by default
     return callback(null, true);
