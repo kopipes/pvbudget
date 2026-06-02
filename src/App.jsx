@@ -507,28 +507,13 @@ function App({ user, token, onLogout }) {
     // Check if user can edit PO Number (Admin or Manager only, NOT Corporate)
     const canEditPONumber = isAdmin || isManager;
 
-    // Handle creating a realization form from an approved budget
+    // Handle enabling REALISASI tab - stores data inline in the same form
     const handleCreateRealization = async () => {
         if (!currentFormId || currentStatus !== STATUS.APPROVED) return;
-        const confirmed = await showDialog('confirm', 'Create a new Realization form based on this approved budget? You can then fill in actual spending.', 'Create Realization');
-        if (!confirmed) return;
-
-        try {
-            const res = await fetch(`${API}/api/forms/${currentFormId}/create-realization`, { method: 'POST', headers: authHeaders });
-            const data = await res.json();
-            if (!res.ok) {
-                if (data.existing_id) {
-                    const view = await showDialog('confirm', `${data.error}. Would you like to view it?`, 'Realization Exists');
-                    if (view) loadForm(data.existing_id);
-                    return;
-                }
-                await showDialog('alert', data.error || 'Failed to create realization', 'Error');
-                return;
-            }
-            await showDialog('alert', 'Realization form created! You can now edit the actual spending.', 'Success');
-            // Load the new realization form
-            loadForm(data.id);
-        } catch (e) { await showDialog('alert', 'Failed to create realization', 'Error'); }
+        // Just enable the REALISASI tab - data is stored inline in the same budget form
+        setHasRealization(true);
+        setActiveTab('realisasi');
+        await showDialog('alert', 'REALISASI tab enabled. You can now fill in actual spending.', 'Realisasi');
     };
 
     // Partial reset — keeps items as template for duplication
