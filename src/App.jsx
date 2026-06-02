@@ -97,11 +97,11 @@ function App({ user, token, onLogout }) {
     const isCorporate = user.role === 'corporate';
     const isManager = user.role === 'manager';
     const isUser = user.role === 'user';
-    // Admin and Manager can edit approved forms for PO data; for other tabs, only draft/revision
-    const canEdit = (isAdmin || isManager) ? true : (!isReadOnly && !isCorporate && [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus));
-    // Admin and Manager can always edit PO Number fields
-    const canEditPOFields = isAdmin || isManager;
-    const canEditRealisasi = (isAdmin || isManager) ? true : (!isReadOnly && !isCorporate && (canEdit || (currentStatus === STATUS.APPROVED && activeTab === 'realisasi' && hasRealization && (isAdmin || String(loadedForm?.created_by) === String(user.id)))));
+    // Can edit: draft/revision forms, or admin/manager on unlocked forms
+    const canEdit = isAdmin ? true : (!isReadOnly && !isCorporate && [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus));
+    // PO Number: admin/manager can edit, or user if they created the form
+    const canEditPOFields = isAdmin || isManager || (canEdit && !isCorporate);
+    const canEditRealisasi = isAdmin ? true : (!isReadOnly && !isCorporate && (canEdit || (currentStatus === STATUS.APPROVED && activeTab === 'realisasi' && hasRealization && String(loadedForm?.created_by) === String(user.id))));
     const canSubmit = [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus) && (currentStatus !== STATUS.REVISION || currentFormId);
     const canApprove = isAdmin || isCorporate;
     const canDelete = isAdmin && [STATUS.DRAFT, STATUS.REVISION, 'archived'].includes(currentStatus);
