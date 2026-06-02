@@ -302,7 +302,7 @@ app.put('/api/forms/:id', (req, res) => {
             return res.status(403).json({ error: 'Only draft or revision forms can be edited' });
         }
 
-        if (form.created_by !== user.id && user.role !== 'admin') {
+        if (String(form.created_by) !== String(user.id) && user.role !== 'admin') {
             return res.status(403).json({ error: 'You can only edit your own forms' });
         }
 
@@ -332,7 +332,7 @@ app.post('/api/forms/:id/submit', (req, res) => {
     db.get('SELECT * FROM forms WHERE id = ?', [id], (err, form) => {
         if (err) return res.status(500).json({ error: err.message });
         if (!form) return res.status(404).json({ error: 'Form not found' });
-        if (form.created_by !== req.user.id && req.user.role !== 'admin') {
+        if (String(form.created_by) !== String(req.user.id) && req.user.role !== 'admin') {
             return res.status(403).json({ error: 'Access denied' });
         }
         if (form.status !== STATUS.DRAFT && form.status !== STATUS.REVISION) {
