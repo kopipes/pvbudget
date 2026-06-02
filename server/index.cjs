@@ -124,7 +124,68 @@ app.get('/api/forms', (req, res) => {
     });
 });
 
-// 2. GET form history (all versions of a root form)
+// 2. GET /api/forms/my (User's own forms - MUST be before /:id)
+app.get('/api/forms/my', (req, res) => {
+    const { status } = req.query;
+    let sql = `SELECT f.*, div.name as division_name
+               FROM forms f
+               LEFT JOIN users u ON f.created_by = u.id
+               LEFT JOIN divisions div ON COALESCE(f.division_id, u.division_id) = div.id
+               WHERE f.created_by = ?`;
+    let params = [req.user.id];
+
+    if (status) {
+        sql += ' AND f.status = ?';
+        params.push(status);
+    }
+
+    sql += ' ORDER BY f.updated_at DESC';
+
+    db.all(sql, params, (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+// 3. GET /api/forms/pending (Corporate/Admin — pending approvals)
+app.get('/api/forms/pending', (req, res) => {
+    const { role } = req.user;
+    if (role !== 'admin' && role !== 'corporate') {
+        return res.status(403).json({ error: 'Access denied' });
+    }
+
+    db.all(
+        `SELECT f.*, u.display_name as creator_name, u.division_id, div.name as division_name,
+          (SELECT display_name FROM users WHERE id = f.approved_by_1) as approver_1_name
+         FROM forms f
+         LEFT JOIN users u ON f.created_by = u.id
+         LEFT JOIN divisions div ON COALESCE(f.division_id, u.division_id) = div.id
+         WHERE f.status = ?
+         ORDER BY f.submitted_at ASC`,
+        [STATUS.PENDING],
+        (err, rows) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json(rows);
+        }
+    );
+});
+
+// 4. GET /api/forms/revisions (Forms sent back for revision)
+app.get('/api/forms/revisions', (req, res) => {
+    db.all(
+        `SELECT f.*, (SELECT display_name FROM users WHERE id = f.rejected_by) as rejector_name
+         FROM forms f
+         WHERE f.created_by = ? AND f.status = ?
+         ORDER BY f.updated_at DESC`,
+        [req.user.id, STATUS.REVISION],
+        (err, rows) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json(rows);
+        }
+    );
+});
+
+// 5. GET form history (all versions of a root form - MUST be before /:id)
 app.get('/api/forms/:id/history', (req, res) => {
     const { id } = req.params;
 
@@ -141,7 +202,7 @@ app.get('/api/forms/:id/history', (req, res) => {
     });
 });
 
-// 3. GET /api/forms/:id (Load Detail)
+// 6. GET /api/forms/:id (Load Detail - MUST be after specific routes above)
 app.get('/api/forms/:id', (req, res) => {
     const { id } = req.params;
 
@@ -172,67 +233,6 @@ app.get('/api/forms/:id', (req, res) => {
                 }
                 res.json(row);
             });
-        }
-    );
-});
-
-// 4. GET /api/forms/pending (Corporate/Admin — pending approvals)
-app.get('/api/forms/pending', (req, res) => {
-    const { role } = req.user;
-    if (role !== 'admin' && role !== 'corporate') {
-        return res.status(403).json({ error: 'Access denied' });
-    }
-
-    db.all(
-        `SELECT f.*, u.display_name as creator_name, u.division_id, div.name as division_name,
-          (SELECT display_name FROM users WHERE id = f.approved_by_1) as approver_1_name
-         FROM forms f
-         LEFT JOIN users u ON f.created_by = u.id
-         LEFT JOIN divisions div ON COALESCE(f.division_id, u.division_id) = div.id
-         WHERE f.status = ?
-         ORDER BY f.submitted_at ASC`,
-        [STATUS.PENDING],
-        (err, rows) => {
-            if (err) return res.status(500).json({ error: err.message });
-            res.json(rows);
-        }
-    );
-});
-
-// 5. GET /api/forms/my (User's own forms with status filter)
-app.get('/api/forms/my', (req, res) => {
-    const { status } = req.query;
-    let sql = `SELECT f.*, div.name as division_name
-               FROM forms f
-               LEFT JOIN users u ON f.created_by = u.id
-               LEFT JOIN divisions div ON COALESCE(f.division_id, u.division_id) = div.id
-               WHERE f.created_by = ?`;
-    let params = [req.user.id];
-
-    if (status) {
-        sql += ' AND f.status = ?';
-        params.push(status);
-    }
-
-    sql += ' ORDER BY f.updated_at DESC';
-
-    db.all(sql, params, (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
-    });
-});
-
-// 6. GET /api/forms/revisions (Forms sent back for revision, belonging to current user)
-app.get('/api/forms/revisions', (req, res) => {
-    db.all(
-        `SELECT f.*, (SELECT display_name FROM users WHERE id = f.rejected_by) as rejector_name
-         FROM forms f
-         WHERE f.created_by = ? AND f.status = ?
-         ORDER BY f.updated_at DESC`,
-        [req.user.id, STATUS.REVISION],
-        (err, rows) => {
-            if (err) return res.status(500).json({ error: err.message });
-            res.json(rows);
         }
     );
 });
