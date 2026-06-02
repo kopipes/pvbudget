@@ -32,11 +32,14 @@ const STATUS = {
 
 // ---- Check if user can edit a form ----
 function canEditForm(user, form, callback) {
-    if (user.role === 'admin') return callback(null, false); // admin can edit approved
+    if (user.role === 'admin') return callback(null, false); // admin can edit anything
     if (user.role === 'corporate') return callback(null, true); // corporate always readonly
-    if (form.status === STATUS.APPROVED && form.created_by !== user.id) return callback(null, true); // locked (but owner can edit - for Realisasi)
-    if (form.created_by === user.id) return callback(null, false); // owner can edit
-    return callback(null, true); // default readonly
+    // For non-approved forms: owner can always edit
+    if (form.status !== STATUS.APPROVED) {
+        return callback(null, form.created_by !== user.id);
+    }
+    // Approved forms are locked by default
+    return callback(null, true);
 }
 
 // ---- Visibility: what forms can this user see? ----
