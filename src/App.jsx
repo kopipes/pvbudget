@@ -1052,8 +1052,9 @@ function App({ user, token, onLogout }) {
                         <Search size={16} /> Load / Use Template
                     </button>
                 )}
-                {canEdit && (
-                    <button className="btn btn-secondary btn-sm" onClick={handleSaveForm}><Save size={16} /> Save</button>
+                {/* Save Form button - only when on BUDGET tab */}
+                {canEdit && activeTab === 'budget' && (
+                    <button className="btn btn-secondary btn-sm" onClick={handleSaveForm}><Save size={16} /> Save Form</button>
                 )}
                 {canSubmit && currentFormId && (
                     <button className="btn btn-primary btn-sm" onClick={handleSubmitForm} style={{ background: 'var(--primary)', color: '#000' }}>
@@ -1109,16 +1110,16 @@ function App({ user, token, onLogout }) {
                         <Receipt size={16} /> Create Realization
                     </button>
                 )}
-                {/* Save Realisasi button - only when on REALISASI tab and has realization form */}
-                {activeTab === 'realisasi' && canEditRealisasi && realizationFormId && (
+                {/* Save Realisasi button - only when on REALISASI tab */}
+                {activeTab === 'realisasi' && canEditRealisasi && (
                     <button className="btn btn-sm" style={{ background: '#f59e0b', color: '#fff' }} onClick={handleSaveRealisasi}>
-                        <Save size={16} /> Simpan Realisasi
+                        <Save size={16} /> Save Realisasi
                     </button>
                 )}
-                {/* Save PO button - only when on PO tab and can edit */}
+                {/* Save PO button - only when on PO tab */}
                 {activeTab === 'po' && canEditPONumber && (
                     <button className="btn btn-sm" style={{ background: '#10b981', color: '#fff' }} onClick={handleSavePONumber}>
-                        <Save size={16} /> Save PO
+                        <Save size={16} /> Save PO Number
                     </button>
                 )}
                 <button className="btn btn-success btn-sm" onClick={handleExportExcel}><FileDown size={16} /> Export XLS</button>
