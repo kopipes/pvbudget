@@ -120,6 +120,7 @@ const db = new sqlite3.Database(dbPath, (err) => {
         db.run(`ALTER TABLE forms ADD COLUMN po_number TEXT`, () => {});
         db.run(`ALTER TABLE forms ADD COLUMN has_po INTEGER DEFAULT 0`, () => {});
         db.run(`ALTER TABLE forms ADD COLUMN management_fee_pct REAL DEFAULT 10`, () => {});
+        db.run(`ALTER TABLE forms ADD COLUMN realiza_data TEXT`, () => {});
 
         // Seed default admin user if no users exist
         db.get('SELECT COUNT(*) as count FROM users', (err, row) => {

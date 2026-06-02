@@ -163,6 +163,9 @@ app.get('/api/forms/:id', (req, res) => {
                 if (row.data) {
                     try { row.data = JSON.parse(row.data); } catch (e) {}
                 }
+                if (row.realiza_data) {
+                    try { row.realiza_data = JSON.parse(row.realiza_data); } catch (e) {}
+                }
                 res.json(row);
             });
         }
@@ -269,7 +272,7 @@ app.post('/api/forms', (req, res) => {
 // 8. PUT /api/forms/:id (Update form — only draft/revision owner can edit)
 app.put('/api/forms/:id', (req, res) => {
     const { id } = req.params;
-    const { project_no, event, venue, periode, periode_start, periode_end, management_fee_pct, data, note, division_id } = req.body;
+    const { project_no, event, venue, periode, periode_start, periode_end, management_fee_pct, data, note, division_id, realiza_data } = req.body;
 
     // Validate management_fee_pct is a valid number
     if (management_fee_pct != null && (typeof management_fee_pct !== 'number' || management_fee_pct < 0 || management_fee_pct > 100)) {
@@ -302,11 +305,12 @@ app.put('/api/forms/:id', (req, res) => {
             return res.status(403).json({ error: 'Approved forms are locked' });
         }
 
-        const sql = `UPDATE forms SET project_no = ?, event = ?, venue = ?, periode = ?, periode_start = ?, periode_end = ?, management_fee_pct = ?, data = ?, note = ?, division_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
+        const sql = `UPDATE forms SET project_no = ?, event = ?, venue = ?, periode = ?, periode_start = ?, periode_end = ?, management_fee_pct = ?, data = ?, note = ?, division_id = ?, realiza_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
         const params = [
             project_no || '', event || '', venue || '', periode || '', periode_start || '', periode_end || '',
             management_fee_pct != null ? management_fee_pct : 10,
-            JSON.stringify(data || []), note || '', division_id, id
+            JSON.stringify(data || []), note || '', division_id, 
+            realiza_data ? JSON.stringify(realiza_data) : null, id
         ];
 
         db.run(sql, params, function (err) {

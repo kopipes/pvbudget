@@ -83,7 +83,6 @@ function App({ user, token, onLogout }) {
     const [sourceBudget, setSourceBudget] = useState(null);
     const [hasRealization, setHasRealization] = useState(false);
     const [isRealizationForm, setIsRealizationForm] = useState(false);
-    const [realizationFormId, setRealizationFormId] = useState(null);
     const [budgetMgmtFeePct, setBudgetMgmtFeePct] = useState(10);
     const [hasPO, setHasPO] = useState(false);
     const [poNumber, setPoNumber] = useState('');
@@ -717,19 +716,8 @@ function App({ user, token, onLogout }) {
                 setShowDashboard(false);
                 setOpenedFormId(id);
 
-                // Check if this budget already has a realization
-                if ((!form.form_type || form.form_type === 'budget') && form.status === STATUS.APPROVED) {
-                    try {
-                        const realCheck = await fetch(`${API}/api/forms?source_budget_id=${id}`, { headers: authHeaders });
-                        if (realCheck.ok) {
-                            const result = await realCheck.json();
-                            const realizations = Array.isArray(result) ? result : (result.data || []);
-                            setHasRealization(realizations.length > 0);
-                        }
-                    } catch (e) { setHasRealization(false); }
-                } else {
-                    setHasRealization(false);
-                }
+                // Check if this budget has realization data (stored inline)
+                setHasRealization(form.realiza_data && Array.isArray(form.realiza_data) && form.realiza_data.length > 0);
 
                 // Set PO state from form data
                 setHasPO(form.has_po ? true : false);
