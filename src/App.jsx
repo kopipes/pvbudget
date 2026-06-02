@@ -1042,9 +1042,9 @@ function App({ user, token, onLogout }) {
                 )}
             </div>
 
-            {/* TOP ACTION BAR */}
-            <div className="top-action-bar">
-                {currentStatus === STATUS.DRAFT && !isCorporate && (
+                {/* TOP ACTION BAR */}
+                <div className="top-action-bar">
+                {(currentStatus === STATUS.DRAFT || isAdmin) && !isCorporate && (
                     <button className="btn btn-secondary btn-sm" onClick={handleNewForm}><FilePlus size={16} /> New Form</button>
                 )}
                 {currentStatus === STATUS.DRAFT && (
