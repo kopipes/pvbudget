@@ -507,13 +507,20 @@ function App({ user, token, onLogout }) {
     // Check if user can edit PO Number (Admin or Manager only, NOT Corporate)
     const canEditPONumber = isAdmin || isManager;
 
-    // Handle enabling REALISASI tab - stores data inline in the same form
+    // Handle enabling REALISASI tab - calls backend to mark form as having realization
     const handleCreateRealization = async () => {
         if (!currentFormId || currentStatus !== STATUS.APPROVED) return;
-        // Just enable the REALISASI tab - data is stored inline in the same budget form
-        setHasRealization(true);
-        setActiveTab('realisasi');
-        await showDialog('alert', 'REALISASI tab enabled. You can now fill in actual spending.', 'Realisasi');
+        try {
+            const res = await fetch(`${API}/api/forms/${currentFormId}/enable-realisasi`, { method: 'POST', headers: authHeaders });
+            const data = await res.json();
+            if (!res.ok) { await showDialog('alert', data.error || 'Failed to enable realization', 'Error'); return; }
+            // Update local state and switch tab
+            setHasRealization(true);
+            setActiveTab('realisasi');
+            // Update loadedForm so it persists
+            setLoadedForm(prev => prev ? { ...prev, has_realisasi: 1 } : null);
+            await showDialog('alert', 'REALISASI tab enabled. You can now fill in actual spending.', 'Realisasi');
+        } catch (e) { await showDialog('alert', 'Failed to enable realization', 'Error'); }
     };
 
     // Partial reset — keeps items as template for duplication
@@ -702,13 +709,14 @@ function App({ user, token, onLogout }) {
                 setShowDashboard(false);
                 setOpenedFormId(id);
 
-                // Check if this budget has a realization form OR inline realiza_data
+                // Check if this budget has realization enabled (has_realisasi flag)
+                const hasRealisasiFlag = form.has_realisasi === 1;
                 const hasInlineRealisasi = form.realiza_data && Array.isArray(form.realiza_data) && form.realiza_data.length > 0;
-                if (hasInlineRealisasi) {
+                if (hasRealisasiFlag || hasInlineRealisasi) {
                     setHasRealization(true);
                     setRealizationFormId(null); // Using inline storage
                 } else {
-                    // Check for existing realization form via source_budget_id
+                    // Check for existing realization form via source_budget_id (legacy)
                     try {
                         const realCheck = await fetch(`${API}/api/forms?source_budget_id=${id}`, { headers: authHeaders });
                         if (realCheck.ok) {

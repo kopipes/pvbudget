@@ -146,7 +146,8 @@ app.get('/api/forms/:id', (req, res) => {
         `SELECT f.*, u.display_name as creator_name, u.username as creator_username, u.division_id, div.name as division_name,
           (SELECT display_name FROM users WHERE id = f.approved_by_1) as approver_1_name,
           (SELECT display_name FROM users WHERE id = f.approved_by_2) as approver_2_name,
-          (SELECT display_name FROM users WHERE id = f.rejected_by) as rejector_name
+          (SELECT display_name FROM users WHERE id = f.rejected_by) as rejector_name,
+          COALESCE(f.has_realisasi, 0) as has_realisasi
          FROM forms f
          LEFT JOIN users u ON f.created_by = u.id
          LEFT JOIN divisions div ON COALESCE(f.division_id, u.division_id) = div.id
@@ -590,7 +591,30 @@ app.put('/api/forms/:id/po', (req, res) => {
     });
 });
 
-// 17. POST /api/forms/:id/create-realization (Create realization form from approved budget)
+// 17. POST /api/forms/:id/enable-realisasi (Enable REALISASI tab - marks has_realisasi=1)
+app.post('/api/forms/:id/enable-realisasi', (req, res) => {
+    if (req.user.role === 'corporate') {
+        return res.status(403).json({ error: 'Corporate users cannot enable realization' });
+    }
+
+    const { id } = req.params;
+
+    db.get('SELECT * FROM forms WHERE id = ?', [id], (err, form) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!form) return res.status(404).json({ error: 'Form not found' });
+        
+        if (form.status !== STATUS.APPROVED) {
+            return res.status(400).json({ error: 'Only approved forms can have realization enabled' });
+        }
+
+        db.run(`UPDATE forms SET has_realisasi = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [id], function (err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ id, message: 'Realisasi enabled', has_realisasi: 1 });
+        });
+    });
+});
+
+// 17b. POST /api/forms/:id/create-realization (Create realization form from approved budget)
 app.post('/api/forms/:id/create-realization', (req, res) => {
     if (req.user.role === 'corporate') {
         return res.status(403).json({ error: 'Corporate users cannot create realization forms' });
