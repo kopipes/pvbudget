@@ -97,11 +97,11 @@ function App({ user, token, onLogout }) {
     const isCorporate = user.role === 'corporate';
     const isManager = user.role === 'manager';
     const isUser = user.role === 'user';
-    // Can edit: draft/revision forms, or admin/manager on unlocked forms
-    const canEdit = isAdmin ? true : (!isReadOnly && !isCorporate && [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus));
-    // PO Number: admin/manager can edit, or user if they created the form
-    const canEditPOFields = isAdmin || isManager || (canEdit && !isCorporate);
-    const canEditRealisasi = isAdmin ? true : (!isReadOnly && !isCorporate && (canEdit || (currentStatus === STATUS.APPROVED && activeTab === 'realisasi' && hasRealization && String(loadedForm?.created_by) === String(user.id))));
+    // Can edit: admin always, others only on draft/revision
+    const canEdit = isAdmin || (!isReadOnly && !isCorporate && [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus));
+    // PO Number: admin/manager can edit
+    const canEditPOFields = isAdmin || isManager;
+    const canEditRealisasi = isAdmin || (!isReadOnly && !isCorporate && (canEdit || (currentStatus === STATUS.APPROVED && activeTab === 'realisasi' && hasRealization && String(loadedForm?.created_by) === String(user.id))));
     const canSubmit = [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus) && (currentStatus !== STATUS.REVISION || currentFormId);
     const canApprove = isAdmin || isCorporate;
     const canDelete = isAdmin && [STATUS.DRAFT, STATUS.REVISION, 'archived'].includes(currentStatus);
