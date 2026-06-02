@@ -97,7 +97,10 @@ function App({ user, token, onLogout }) {
     const isCorporate = user.role === 'corporate';
     const isManager = user.role === 'manager';
     const isUser = user.role === 'user';
+    // Admin and Manager can edit approved forms for PO data; for other tabs, only draft/revision
     const canEdit = (isAdmin || isManager) ? true : (!isReadOnly && !isCorporate && [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus));
+    // Admin and Manager can always edit PO Number fields
+    const canEditPOFields = isAdmin || isManager;
     const canEditRealisasi = (isAdmin || isManager) ? true : (!isReadOnly && !isCorporate && (canEdit || (currentStatus === STATUS.APPROVED && activeTab === 'realisasi' && hasRealization && (isAdmin || String(loadedForm?.created_by) === String(user.id)))));
     const canSubmit = [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus) && (currentStatus !== STATUS.REVISION || currentFormId);
     const canApprove = isAdmin || isCorporate;
@@ -1187,7 +1190,7 @@ function App({ user, token, onLogout }) {
                 {!isCorporate && (
                     <div className="input-group">
                         <label>Division</label>
-                        <select value={selectedDivisionId} onChange={e => setSelectedDivisionId(e.target.value)} disabled={!canEdit && currentStatus !== STATUS.DRAFT} style={{ padding: '0.75rem 1rem', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '1rem', background: 'var(--surface)' }}>
+                        <select value={selectedDivisionId} onChange={e => setSelectedDivisionId(e.target.value)} disabled={!canEdit} style={{ padding: '0.75rem 1rem', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '1rem', background: 'var(--surface)' }}>
                             <option value="">— Select Division —</option>
                             {divisions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                         </select>
