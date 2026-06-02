@@ -447,7 +447,7 @@ app.post('/api/forms/:id/reject', (req, res) => {
     });
 });
 
-// 12. DELETE /api/forms/:id (Admin only, only draft/revision/archived)
+// 12. DELETE /api/forms/:id (Admin only - can delete any form)
 app.delete('/api/forms/:id', (req, res) => {
     if (req.user.role !== 'admin') {
         return res.status(403).json({ error: 'Only admins can delete forms' });
@@ -457,11 +457,8 @@ app.delete('/api/forms/:id', (req, res) => {
     db.get('SELECT status FROM forms WHERE id = ?', [id], (err, row) => {
         if (err) return res.status(500).json({ error: err.message });
         if (!row) return res.status(404).json({ error: 'Form not found' });
-
-        const deletable = [STATUS.DRAFT, STATUS.REVISION, 'archived'];
-        if (!deletable.includes(row.status)) {
-            return res.status(400).json({ error: 'Only draft, revision or archived forms can be deleted' });
-        }
+        
+        // Admin can delete any form (draft, revision, approved, archived)
 
         db.run('DELETE FROM forms WHERE id = ?', [id], function (err) {
             if (err) return res.status(500).json({ error: err.message });
