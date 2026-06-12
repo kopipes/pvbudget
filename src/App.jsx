@@ -60,7 +60,6 @@ function App({ user, token, onLogout }) {
     const [currentFormId, setCurrentFormId] = useState(null);
     const [baseItemCount, setBaseItemCount] = useState(0);
     const [baseItemCountRealisasi, setBaseItemCountRealisasi] = useState(0);
-    const [originalRealisasiCount, setOriginalRealisasiCount] = useState(0);
     const [currentStatus, setCurrentStatus] = useState(STATUS.DRAFT);
     const [currentVersion, setCurrentVersion] = useState(1);
     const [showLoadModal, setShowLoadModal] = useState(false);
@@ -96,7 +95,6 @@ function App({ user, token, onLogout }) {
     const isAdmin = user.role === 'admin';
     const isCorporate = user.role === 'corporate';
     const isManager = user.role === 'manager';
-    const isUser = user.role === 'user';
     // Can edit: only on draft/revision status (admin included, except archived)
     const canEdit = !isCorporate && !isReadOnly && [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus);
     // PO Number: admin/manager can edit
@@ -301,57 +299,6 @@ function App({ user, token, onLogout }) {
         </div>
     );
     
-    // Sub-item drag and drop handler
-    const handleSubDragEnd = (event, mainItemId) => {
-        const { active, over } = event;
-        if (!over || active.id === over.id) return;
-
-        setItems((items) => {
-            // Find which main item contains the dropped target
-            const targetMainItem = items.find(item => 
-                item.id === over.id || item.subs.some(s => s.id === over.id)
-            );
-            
-            // If dropping on a main item, move sub-item to that main item
-            if (targetMainItem && targetMainItem.id !== mainItemId) {
-                // Find and remove sub from current main item
-                let movedSub = null;
-                const updatedItems = items.map(item => {
-                    if (item.id === mainItemId) {
-                        const subIndex = item.subs.findIndex(s => s.id === active.id);
-                        if (subIndex !== -1) {
-                            movedSub = item.subs[subIndex];
-                            return { ...item, subs: item.subs.filter(s => s.id !== active.id) };
-                        }
-                    }
-                    return item;
-                });
-                
-                // Add sub to target main item
-                if (movedSub) {
-                    return updatedItems.map(item => {
-                        if (item.id === targetMainItem.id) {
-                            return { ...item, subs: [...item.subs, movedSub] };
-                        }
-                        return item;
-                    });
-                }
-                return items;
-            }
-            
-            // Reorder within same main item
-            return items.map(item => {
-                if (item.id !== mainItemId) return item;
-                
-                const oldIndex = item.subs.findIndex(s => s.id === active.id);
-                const newIndex = item.subs.findIndex(s => s.id === over.id);
-                if (oldIndex === -1 || newIndex === -1) return item;
-                
-                const newSubs = arrayMove(item.subs, oldIndex, newIndex);
-                return { ...item, subs: newSubs };
-            });
-        });
-    };
 
     const canAddItems = canEdit || isRealizationForm || (activeTab === 'realisasi' && canEditRealisasi);
     const addMainItem = () => { 
@@ -467,6 +414,15 @@ function App({ user, token, onLogout }) {
         setApprovalHistory([]);
         setOpenedFormId(null);
         setSourceBudget(null);
+        setHasRealization(false);
+        setIsRealizationForm(false);
+        setRealizationFormId(null);
+        setHasPO(false);
+        setPoNumber('');
+        setBudgetMgmtFeePct(10);
+        setBaseItemCount(0);
+        setBaseItemCountRealisasi(0);
+        setActiveTab('budget');
     };
 
     // Handle creating PO from an approved budget
@@ -748,10 +704,6 @@ function App({ user, token, onLogout }) {
                 }
             }
         } catch (e) { await showDialog('alert', 'Failed to load form', 'Error'); }
-    };
-
-    const loadPendingForm = (id) => {
-        loadForm(id);
     };
 
     // Handle switching between BUDGET, PO and REALISASI tabs
@@ -1187,7 +1139,7 @@ function App({ user, token, onLogout }) {
                     <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                         <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#ef4444' }}>Pending Approvals:</span>
                         {pendingApprovals.slice(0, 3).map(p => (
-                            <span key={p.id} style={{ background: 'rgba(234,179,8,0.12)', color: '#CA8A04', border: '1px solid rgba(234,179,8,0.25)', padding: '2px 8px', borderRadius: '8px', fontSize: '0.7rem', cursor: 'pointer' }} onClick={() => loadPendingForm(p.id)}>
+                            <span key={p.id} style={{ background: 'rgba(234,179,8,0.12)', color: '#CA8A04', border: '1px solid rgba(234,179,8,0.25)', padding: '2px 8px', borderRadius: '8px', fontSize: '0.7rem', cursor: 'pointer' }} onClick={() => loadForm(p.id)}>
                                 {p.event || 'Untitled'} v{p.version_number}
                             </span>
                         ))}
@@ -1281,10 +1233,10 @@ function App({ user, token, onLogout }) {
                     <tbody>
                     <SortableContext items={[...items.map(i => i.id), ...items.flatMap(i => i.subs.map(s => `${i.id}_${s.id}`))]} strategy={verticalListSortingStrategy}>
                         {items.map((mainItem, mainIndex) => {
-                            const isRealisasiMode = isRealizationForm || (activeTab === 'realisasi');
-                            const threshold = (activeTab === 'realisasi' && !isRealizationForm) ? baseItemCountRealisasi : baseItemCount;
+                            const isRealisasiTab = activeTab === 'realisasi';
+                            const threshold = (isRealisasiTab && !isRealizationForm) ? baseItemCountRealisasi : baseItemCount;
                             const isNewItem = mainIndex >= threshold;
-                            const canEditAllFields = isRealisasiMode ? isNewItem : canAddItems;
+                            const canEditAllFields = (isRealisasiTab || isRealizationForm) ? isNewItem : canAddItems;
                             
                             return (
                                 <SortableRow
@@ -1292,7 +1244,6 @@ function App({ user, token, onLogout }) {
                                     mainItem={mainItem}
                                     mainIndex={mainIndex}
                                     threshold={threshold}
-                                    isRealisasiMode={isRealisasiMode}
                                     activeTab={activeTab}
                                     canAddItems={canAddItems}
                                     canEditAllFields={canEditAllFields}
@@ -1304,8 +1255,6 @@ function App({ user, token, onLogout }) {
                                     updateSubItem={updateSubItem}
                                     removeSubItem={removeSubItem}
                                     canEditActualRate={canEditActualRate}
-                                    isRealizationForm={isRealizationForm}
-                                    onSubDragEnd={handleSubDragEnd}
                                     isManagerOrCorporate={isManager || isCorporate || isAdmin}
                                 />
                             );

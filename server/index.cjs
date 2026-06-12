@@ -196,7 +196,7 @@ app.get('/api/forms/:id/history', (req, res) => {
 
         const vis = buildFormVisibility(req.user);
         const sql = `${vis.select} ${vis.join ? vis.join : ''} WHERE (f.id = ? OR f.root_form_id = ?) AND f.status != 'archived' ORDER BY f.version_number ASC`;
-        db.all(sql, [rootId, rootId], (err, rows) => {
+        db.all(sql, [...vis.params, rootId, rootId], (err, rows) => {
             if (err) return res.status(500).json({ error: err.message });
             res.json(rows);
         });
@@ -384,7 +384,7 @@ app.post('/api/forms/:id/approve', (req, res) => {
         if (form.approval_stage === 'pending_2nd') {
             // === STAGE 2: Final approval ===
             // Prevent same user from doing both stages
-            if (form.approved_by_1 && form.approved_by_1 === req.user.id) {
+            if (form.approved_by_1 && String(form.approved_by_1) === String(req.user.id)) {
                 return res.status(400).json({ error: 'You already approved this form at stage 1. A different approver is required for stage 2.' });
             }
             db.run(
@@ -403,7 +403,7 @@ app.post('/api/forms/:id/approve', (req, res) => {
         } else {
             // === STAGE 1: First approval ===
             // Prevent same user from approving both stages
-            if (form.approved_by_1 && form.approved_by_1 === req.user.id) {
+            if (form.approved_by_1 && String(form.approved_by_1) === String(req.user.id)) {
                 return res.status(400).json({ error: 'You already approved this form at stage 1. Another approver is needed for stage 2.' });
             }
             db.run(
@@ -545,6 +545,11 @@ app.post('/api/forms/:id/create-po', (req, res) => {
         if (err) return res.status(500).json({ error: err.message });
         if (!form) return res.status(404).json({ error: 'Form not found' });
 
+        // Only owner or admin/manager can create PO
+        if (req.user.role !== 'admin' && req.user.role !== 'manager' && String(form.created_by) !== String(req.user.id)) {
+            return res.status(403).json({ error: 'Only the form owner, manager, or admin can create a PO' });
+        }
+
         // Only allow creating PO from approved budget forms
         if (form.form_type && form.form_type !== 'budget') {
             return res.status(400).json({ error: 'Only budget forms can have PO created' });
@@ -622,6 +627,11 @@ app.post('/api/forms/:id/enable-realisasi', (req, res) => {
     db.get('SELECT * FROM forms WHERE id = ?', [id], (err, form) => {
         if (err) return res.status(500).json({ error: err.message });
         if (!form) return res.status(404).json({ error: 'Form not found' });
+
+        // Only owner or admin can enable realisasi
+        if (req.user.role !== 'admin' && String(form.created_by) !== String(req.user.id)) {
+            return res.status(403).json({ error: 'Only the form owner or admin can enable realization' });
+        }
         
         if (form.status !== STATUS.APPROVED) {
             return res.status(400).json({ error: 'Only approved forms can have realization enabled' });

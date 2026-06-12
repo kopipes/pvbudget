@@ -91,8 +91,9 @@ export default function UserManagement({ token, onClose }) {
             if (!res.ok) { setError(data.error || 'Failed to save user'); return; }
     
             // Save managed divisions for managers
-            if (body.role === 'manager' || editingUser?.role === 'manager') {
-                await fetch(`${API}/api/users/${editingUser.id}/managed-divisions`, {
+            const savedUserId = editingUser ? editingUser.id : data.id;
+            if ((body.role === 'manager' || editingUser?.role === 'manager') && savedUserId) {
+                await fetch(`${API}/api/users/${savedUserId}/managed-divisions`, {
                     method: 'PUT',
                     headers,
                     body: JSON.stringify({ division_ids: managedDivisions })
@@ -298,7 +299,7 @@ export default function UserManagement({ token, onClose }) {
                                 </tr>
                             ))}
                             {users.length === 0 && (
-                                <tr><td colSpan="5" style={{ textAlign: 'center', padding: '2rem', color: '#64748B' }}>No users found</td></tr>
+                                <tr><td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: '#64748B' }}>No users found</td></tr>
                             )}
                         </tbody>
                     </table>

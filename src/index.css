@@ -231,9 +231,10 @@ td.col-po {
 
 /* Readonly cells */
 .cell-readonly {
-  padding: 0.5rem;
+  padding: 0.25rem 0.5rem;
   font-size: 0.95rem;
   color: var(--text-main);
+  font-family: inherit;
 }
 
 .cell-readonly.align-right {
@@ -847,14 +848,7 @@ td.col-po {
   }
 }
 
-/* Disabled input styling */
-.cell-input:disabled,
-.input-group input:disabled,
-textarea:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  background: var(--bg-color) !important;
-}
+
 
 /* ========== USER MANAGEMENT MODAL ========== */
 .user-mgmt-modal {
@@ -1016,13 +1010,13 @@ textarea:disabled {
 }
 
 .um-checkbox-label:hover {
-  background: var(--border-color);
+  background: var(--border);
 }
 
 .um-checkbox-label input[type="checkbox"] {
   width: 14px;
   height: 14px;
-  accent-color: var(--primary-color);
+  accent-color: var(--primary);
 }
 /* Disabled input styling */
 input:disabled, input[disabled],
@@ -1032,11 +1026,4 @@ textarea:disabled, textarea[disabled] {
   background: var(--bg-color) !important;
   color: var(--text-muted);
   opacity: 0.75;
-}
-
-/* Read-only cell styling */
-.cell-readonly {
-  font-family: inherit;
-  padding: 0.25rem 0.5rem;
-  color: var(--text-main);
 }

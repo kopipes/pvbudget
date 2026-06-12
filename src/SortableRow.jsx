@@ -3,10 +3,10 @@ import { CSS } from '@dnd-kit/utilities';
 import { PlusCircle, Trash2, GripVertical } from 'lucide-react';
 
 function SortableRow({ 
-    mainItem, mainIndex, threshold, isRealisasiMode, activeTab,
+    mainItem, mainIndex, threshold, activeTab,
     canAddItems, canEditAllFields, formatCurrency, parseCurrency,
     updateMainItemName, addSubItem, removeMainItem, updateSubItem, removeSubItem,
-    canEditActualRate, isRealizationForm, isManagerOrCorporate
+    canEditActualRate, isManagerOrCorporate
 }) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: mainItem.id });
     const rowStyle = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
@@ -52,6 +52,7 @@ function SortableRow({
                         updateSubItem={updateSubItem}
                         removeSubItem={removeSubItem}
                         mainIndex={mainIndex}
+                        threshold={threshold}
                         isManagerOrCorporate={isManagerOrCorporate}
                     />
                 );
