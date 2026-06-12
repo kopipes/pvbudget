@@ -97,8 +97,8 @@ function App({ user, token, onLogout }) {
     const isCorporate = user.role === 'corporate';
     const isManager = user.role === 'manager';
     const isUser = user.role === 'user';
-    // Can edit: admin always, others only on draft/revision
-    const canEdit = isAdmin || (!isReadOnly && !isCorporate && [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus));
+    // Can edit: only on draft/revision status (admin included, except archived)
+    const canEdit = !isCorporate && !isReadOnly && [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus);
     // PO Number: admin/manager can edit
     const canEditPOFields = isAdmin || isManager;
     const canEditRealisasi = isAdmin || (!isReadOnly && !isCorporate && (canEdit || (currentStatus === STATUS.APPROVED && activeTab === 'realisasi' && hasRealization && String(loadedForm?.created_by) === String(user.id))));
@@ -386,9 +386,13 @@ function App({ user, token, onLogout }) {
         return baseItemCount;
     };
     const canEditItemById = (mainId) => {
+        // Admin can always edit items (except archived forms)
+        if (isAdmin && currentStatus !== 'archived') return true;
+        // In BUDGET/PO tab: use canEdit flag
+        if (activeTab !== 'realisasi') return canEdit;
+        // In REALISASI tab: only items at or after threshold are editable (new items)
         const idx = items.findIndex(i => i.id === mainId);
         const threshold = getEditThreshold();
-        // In REALISASI mode: items at or after threshold are editable (new items only)
         return idx >= threshold;
     };
     const canEditActualRate = (mainId) => {
@@ -758,31 +762,59 @@ function App({ user, token, onLogout }) {
         }
         setActiveTab(tab);
         if (tab === 'realisasi' && currentFormId && !isRealizationForm) {
-            // Load realization data from linked realization form
-            try {
-                const realCheck = await fetch(`${API}/api/forms?source_budget_id=${currentFormId}`, { headers: authHeaders });
-                if (realCheck.ok) {
-                    const result = await realCheck.json();
-                    const realizations = Array.isArray(result) ? result : (result.data || []);
-                    if (realizations.length > 0) {
-                        setRealizationFormId(realizations[0].id);
-                        const realizationRes = await fetch(`${API}/api/forms/${realizations[0].id}`, { headers: authHeaders });
-                        if (realizationRes.ok) {
-                            const realizationForm = await realizationRes.json();
-                            if (realizationForm.data && Array.isArray(realizationForm.data)) {
-                                setItems(realizationForm.data);
-                                // baseItemCountRealisasi = original budget items count
-                                // Items before this index are "original" (read-only except actualRate)
-                                // Items at or after this index are "new" (fully editable)
-                                if (loadedForm && loadedForm.data && Array.isArray(loadedForm.data)) {
-                                    setBaseItemCountRealisasi(loadedForm.data.length);
+            // Budget items count = threshold; items at/after this index are new (editable)
+            const budgetItems = (loadedForm && loadedForm.data && Array.isArray(loadedForm.data)) ? loadedForm.data : [];
+            const budgetItemCount = budgetItems.length;
+            setBaseItemCountRealisasi(budgetItemCount);
+
+            // Helper: merge poNumber from budget items into realisasi items
+            const mergePoNumbers = (realizaItems, budgetItems) => {
+                return realizaItems.map(rItem => {
+                    const bItem = budgetItems.find(b => b.id === rItem.id);
+                    if (!bItem) return rItem;
+                    const mergedSubs = rItem.subs.map(rSub => {
+                        const bSub = bItem.subs?.find(s => s.id === rSub.id);
+                        return bSub ? { ...rSub, poNumber: bSub.poNumber || rSub.poNumber || '' } : rSub;
+                    });
+                    return { ...rItem, subs: mergedSubs };
+                });
+            };
+
+            // Try inline realiza_data first (new storage)
+            const inlineRealizaData = loadedForm?.realiza_data;
+            if (inlineRealizaData && Array.isArray(inlineRealizaData) && inlineRealizaData.length > 0) {
+                const merged = mergePoNumbers(inlineRealizaData, budgetItems);
+                setItems(merged);
+                setBaseItemCountRealisasi(budgetItemCount);
+                setEventData(prev => ({ ...prev, managementFeePercent: budgetMgmtFeePct }));
+            } else {
+                // Fallback: load from linked realization form (legacy)
+                try {
+                    const realCheck = await fetch(`${API}/api/forms?source_budget_id=${currentFormId}`, { headers: authHeaders });
+                    if (realCheck.ok) {
+                        const result = await realCheck.json();
+                        const realizations = Array.isArray(result) ? result : (result.data || []);
+                        if (realizations.length > 0) {
+                            setRealizationFormId(realizations[0].id);
+                            const realizationRes = await fetch(`${API}/api/forms/${realizations[0].id}`, { headers: authHeaders });
+                            if (realizationRes.ok) {
+                                const realizationForm = await realizationRes.json();
+                                if (realizationForm.data && Array.isArray(realizationForm.data)) {
+                                    const merged = mergePoNumbers(realizationForm.data, budgetItems);
+                                    setItems(merged);
+                                    setBaseItemCountRealisasi(budgetItemCount);
                                 }
+                                setEventData(prev => ({ ...prev, managementFeePercent: budgetMgmtFeePct }));
                             }
+                        } else {
+                            // No realization data yet - show budget items as base
+                            setItems(budgetItems);
+                            setBaseItemCountRealisasi(budgetItemCount);
                             setEventData(prev => ({ ...prev, managementFeePercent: budgetMgmtFeePct }));
                         }
                     }
-                }
-            } catch (e) { console.error('Failed to load realization data', e); }
+                } catch (e) { console.error('Failed to load realization data', e); }
+            }
         } else if (tab === 'budget' || tab === 'po') {
             // For BUDGET and PO tabs, use the loaded form data (which now includes PO Numbers)
             if (loadedForm && loadedForm.data && Array.isArray(loadedForm.data)) {
@@ -793,16 +825,22 @@ function App({ user, token, onLogout }) {
         }
     };
 
-    // Save realization data to the linked realization form
+    // Save realization data
     const handleSaveRealisasi = async () => {
-        if (!realizationFormId) {
-            await showDialog('alert', 'No realization form linked to this budget.', 'Error');
-            return;
-        }
+        if (!currentFormId) return;
         try {
-            const dataToSave = { data: items };
-            const response = await fetch(`${API}/api/forms/${realizationFormId}`, { method: 'PUT', headers: authHeaders, body: JSON.stringify(dataToSave) });
+            let response;
+            if (realizationFormId) {
+                // Legacy: linked realization form
+                const dataToSave = { data: items };
+                response = await fetch(`${API}/api/forms/${realizationFormId}`, { method: 'PUT', headers: authHeaders, body: JSON.stringify(dataToSave) });
+            } else {
+                // Inline: only send realiza_data, server will preserve all other fields
+                const dataToSave = { realiza_data: items };
+                response = await fetch(`${API}/api/forms/${currentFormId}`, { method: 'PUT', headers: authHeaders, body: JSON.stringify(dataToSave) });
+            }
             if (!response.ok) throw new Error('Save failed');
+            setLoadedForm(prev => prev ? { ...prev, realiza_data: items } : null);
             await showDialog('alert', 'Realisasi data saved successfully!', 'Success');
         } catch (error) {
             console.error(error);

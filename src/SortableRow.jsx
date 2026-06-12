@@ -91,32 +91,32 @@ function SortableSubItem({
 
     return (
         <tr className="row-sub-item" ref={setNodeRef} style={rowStyle} data-sub-id={sub.id} data-parent-id={mainItemId}>
-            <td style={{ padding: '0 4px', cursor: (canEditAllFields || (isPOTab && isManagerOrCorporate) || (isRealisasiTab && canEditInRealisasi)) ? 'grab' : 'default' }}>
-                {(canEditAllFields || (isPOTab && isManagerOrCorporate) || (isRealisasiTab && canEditInRealisasi)) && (
+            <td style={{ padding: '0 4px', cursor: (canEditAllFields || (isPOTab && isManagerOrCorporate)) ? 'grab' : 'default' }}>
+                {(canEditAllFields || (isPOTab && isManagerOrCorporate)) && (
                     <span {...attributes} {...listeners} style={{ display: 'flex', alignItems: 'center', color: 'var(--text-muted)', paddingLeft: '2px' }}>
                         <GripVertical size={14} />
                     </span>
                 )}
             </td>
             <td>
-                <input type="text" className="cell-input" value={sub.name} onChange={(e) => updateSubItem(mainItemId, sub.id, 'name', e.target.value)} style={{ paddingLeft: '1rem', ...(isPOTab || (isRealisasiTab && !canEditInRealisasi) ? lockedStyle : {}) }} disabled={isPOTab || (isRealisasiTab && !canEditInRealisasi)} />
+                <input type="text" className="cell-input" value={sub.name} onChange={(e) => updateSubItem(mainItemId, sub.id, 'name', e.target.value)} style={{ paddingLeft: '1rem', ...(!canEditAllFields ? lockedStyle : {}) }} disabled={!canEditAllFields} />
             </td>
             <td>
-                <input type="number" className="cell-input align-center" value={sub.qty} onChange={(e) => updateSubItem(mainItemId, sub.id, 'qty', parseFloat(e.target.value) || 0)} style={isPOTab || (isRealisasiTab && !canEditInRealisasi) ? lockedStyle : {}} disabled={isPOTab || (isRealisasiTab && !canEditInRealisasi)} />
+                <input type="number" className="cell-input align-center" value={sub.qty} onChange={(e) => updateSubItem(mainItemId, sub.id, 'qty', parseFloat(e.target.value) || 0)} style={!canEditAllFields ? lockedStyle : {}} disabled={!canEditAllFields} />
             </td>
             <td>
-                <input type="number" className="cell-input align-center" value={sub.mdy} onChange={(e) => updateSubItem(mainItemId, sub.id, 'mdy', parseFloat(e.target.value) || 0)} style={isPOTab || (isRealisasiTab && !canEditInRealisasi) ? lockedStyle : {}} disabled={isPOTab || (isRealisasiTab && !canEditInRealisasi)} />
+                <input type="number" className="cell-input align-center" value={sub.mdy} onChange={(e) => updateSubItem(mainItemId, sub.id, 'mdy', parseFloat(e.target.value) || 0)} style={!canEditAllFields ? lockedStyle : {}} disabled={!canEditAllFields} />
             </td>
             <td>
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 0.5rem' }}>
-                    <input type="text" className="cell-input align-right" value={sub.internalRate === 0 ? '' : formatCurrency(sub.internalRate)} onChange={(e) => updateSubItem(mainItemId, sub.id, 'internalRate', parseCurrency(e.target.value))} style={{ width: '45%', ...(isPOTab || (isRealisasiTab && !canEditInRealisasi) ? lockedStyle : {}) }} placeholder="Rate" disabled={isPOTab || (isRealisasiTab && !canEditInRealisasi)} />
-                    <div className="cell-readonly align-right" style={{ width: '50%', opacity: isPOTab || (isRealisasiTab && !canEditInRealisasi) ? 0.5 : 1 }}>{formatCurrency(rowTotalInternal)}</div>
+                    <input type="text" className="cell-input align-right" value={sub.internalRate === 0 ? '' : formatCurrency(sub.internalRate)} onChange={(e) => updateSubItem(mainItemId, sub.id, 'internalRate', parseCurrency(e.target.value))} style={{ width: '45%', ...(!canEditAllFields ? lockedStyle : {}) }} placeholder="Rate" disabled={!canEditAllFields} />
+                    <div className="cell-readonly align-right" style={{ width: '50%' }}>{formatCurrency(rowTotalInternal)}</div>
                 </div>
             </td>
             <td>
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 0.5rem' }}>
-                    <input type="text" className="cell-input align-right" value={sub.rate === 0 ? '' : formatCurrency(sub.rate)} onChange={(e) => updateSubItem(mainItemId, sub.id, 'rate', parseCurrency(e.target.value))} style={{ width: '45%', ...(isPOTab || (isRealisasiTab && !canEditInRealisasi) ? lockedStyle : {}) }} placeholder="Rate" disabled={isPOTab || (isRealisasiTab && !canEditInRealisasi)} />
-                    <div className="cell-readonly align-right" style={{ width: '50%', fontWeight: 600, opacity: isPOTab || (isRealisasiTab && !canEditInRealisasi) ? 0.5 : 1 }}>{formatCurrency(rowTotalBudget)}</div>
+                    <input type="text" className="cell-input align-right" value={sub.rate === 0 ? '' : formatCurrency(sub.rate)} onChange={(e) => updateSubItem(mainItemId, sub.id, 'rate', parseCurrency(e.target.value))} style={{ width: '45%', ...(!canEditAllFields ? lockedStyle : {}) }} placeholder="Rate" disabled={!canEditAllFields} />
+                    <div className="cell-readonly align-right" style={{ width: '50%', fontWeight: 600 }}>{formatCurrency(rowTotalBudget)}</div>
                 </div>
             </td>
             {isRealisasiTab && (

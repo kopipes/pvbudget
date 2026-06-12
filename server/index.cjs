@@ -298,16 +298,32 @@ app.put('/api/forms/:id', (req, res) => {
         const user = req.user;
         const editableStatuses = [STATUS.DRAFT, STATUS.REVISION];
 
-        if (!editableStatuses.includes(form.status) && user.role !== 'admin') {
+        // Allow saving realiza_data on approved forms by the owner or admin
+        const isRealizaOnlyUpdate = realiza_data !== undefined && data === undefined && project_no === undefined && event === undefined;
+        const isOwner = String(form.created_by) === String(user.id);
+
+        if (form.status === STATUS.APPROVED && !isRealizaOnlyUpdate && user.role !== 'admin') {
+            return res.status(403).json({ error: 'Approved forms are locked' });
+        }
+
+        if (!editableStatuses.includes(form.status) && !isRealizaOnlyUpdate && user.role !== 'admin') {
             return res.status(403).json({ error: 'Only draft or revision forms can be edited' });
         }
 
-        if (String(form.created_by) !== String(user.id) && user.role !== 'admin') {
+        if (!isOwner && user.role !== 'admin') {
             return res.status(403).json({ error: 'You can only edit your own forms' });
         }
 
-        if (form.status === STATUS.APPROVED && user.role !== 'admin') {
-            return res.status(403).json({ error: 'Approved forms are locked' });
+        if (isRealizaOnlyUpdate) {
+            // Only update realiza_data, leave everything else untouched
+            db.run(`UPDATE forms SET realiza_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+                [JSON.stringify(realiza_data), id],
+                function (err) {
+                    if (err) return res.status(500).json({ error: err.message });
+                    res.json({ id, message: 'Realisasi data saved successfully' });
+                }
+            );
+            return;
         }
 
         const sql = `UPDATE forms SET project_no = ?, event = ?, venue = ?, periode = ?, periode_start = ?, periode_end = ?, management_fee_pct = ?, data = ?, note = ?, division_id = ?, realiza_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
