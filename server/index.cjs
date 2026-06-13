@@ -608,9 +608,7 @@ app.put('/api/forms/:id/po', (req, res) => {
         return res.status(403).json({ error: 'Only Admin, Manager, or Corporate can update PO Number' });
     }
 
-    if (!po_number || !po_number.trim()) {
-        return res.status(400).json({ error: 'PO Number is required' });
-    }
+    // po_number is optional — user may save per-row PO data without a main PO number yet
 
     db.get('SELECT * FROM forms WHERE id = ?', [id], (err, form) => {
         if (err) return res.status(500).json({ error: err.message });
@@ -623,13 +621,14 @@ app.put('/api/forms/:id/po', (req, res) => {
 
         // Update po_number and optionally per-row item data (for per-row PO numbers)
         const dataToSave = items ? JSON.stringify(items) : form.data;
+        const savedPoNumber = po_number ? po_number.trim() : (form.po_number || null);
         db.run(`UPDATE forms SET po_number = ?, has_po = 1, data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, 
-            [po_number.trim(), dataToSave, id], 
+            [savedPoNumber, dataToSave, id], 
             function (err) {
                 if (err) return res.status(500).json({ error: err.message });
                 res.json({ 
                     id, 
-                    po_number: po_number.trim(),
+                    po_number: savedPoNumber,
                     message: 'PO Number saved successfully'
                 });
             }

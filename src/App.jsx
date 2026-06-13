@@ -263,8 +263,8 @@ function App({ user, token, onLogout }) {
     };
 
 
-    // Admin can always add/edit items on non-archived forms regardless of status
-    const canAddItems = (isAdmin && currentStatus !== 'archived') || canEdit || isRealizationForm || (activeTab === 'realisasi' && canEditRealisasi);
+    // canAddItems: can edit budget grid items (admin only on draft/revision, others same)
+    const canAddItems = canEdit || isRealizationForm || (activeTab === 'realisasi' && canEditRealisasi);
     const addMainItem = () => { 
         if (!canAddItems) return; 
         setItems([...items, { id: generateId(), name: 'NEW ITEM', subs: [] }]);
