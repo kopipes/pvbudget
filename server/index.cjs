@@ -206,9 +206,11 @@ app.get('/api/forms/:id/history', (req, res) => {
 // 6. GET /api/forms/:id (Load Detail - MUST be after specific routes above)
 app.get('/api/forms/:id', (req, res) => {
     const { id } = req.params;
+    const user = req.user;
+    const vis = buildFormVisibility(user);
 
-    db.get(
-        `SELECT f.*, u.display_name as creator_name, u.username as creator_username, u.division_id, div.name as division_name,
+    // Build visibility-aware query so users can only fetch forms they're allowed to see
+    const sql = `SELECT f.*, u.display_name as creator_name, u.username as creator_username, u.division_id, div.name as division_name,
           (SELECT display_name FROM users WHERE id = f.approved_by_1) as approver_1_name,
           (SELECT display_name FROM users WHERE id = f.approved_by_2) as approver_2_name,
           (SELECT display_name FROM users WHERE id = f.rejected_by) as rejector_name,
@@ -216,26 +218,24 @@ app.get('/api/forms/:id', (req, res) => {
          FROM forms f
          LEFT JOIN users u ON f.created_by = u.id
          LEFT JOIN divisions div ON COALESCE(f.division_id, u.division_id) = div.id
-         WHERE f.id = ?`,
-        [id],
-        (err, row) => {
-            if (err) return res.status(500).json({ error: err.message });
-            if (!row) return res.status(404).json({ error: 'Form not found' });
+         WHERE f.id = ?${vis.where}`;
 
-            const user = req.user;
-            canEditForm(user, row, (err, readonly) => {
-                if (err) return res.status(500).json({ error: err.message });
-                row.readonly = readonly || user.role === 'corporate';
-                if (row.data) {
-                    try { row.data = JSON.parse(row.data); } catch (e) {}
-                }
-                if (row.realiza_data) {
-                    try { row.realiza_data = JSON.parse(row.realiza_data); } catch (e) {}
-                }
-                res.json(row);
-            });
-        }
-    );
+    db.get(sql, [id, ...vis.params], (err, row) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!row) return res.status(404).json({ error: 'Form not found' });
+
+        canEditForm(user, row, (err, readonly) => {
+            if (err) return res.status(500).json({ error: err.message });
+            row.readonly = readonly || user.role === 'corporate';
+            if (row.data) {
+                try { row.data = JSON.parse(row.data); } catch (e) {}
+            }
+            if (row.realiza_data) {
+                try { row.realiza_data = JSON.parse(row.realiza_data); } catch (e) {}
+            }
+            res.json(row);
+        });
+    });
 });
 
 // 7. POST /api/forms (Create new form as draft)
@@ -441,29 +441,24 @@ app.post('/api/forms/:id/reject', (req, res) => {
             return res.status(400).json({ error: 'Only pending forms can be rejected' });
         }
 
-        // Archive rejected version
-        db.run(
-            `UPDATE forms SET status = 'archived', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-            [id],
-            () => {}
-        );
-
-        // Create new revision version — reset approval stage
         const rootId = form.root_form_id || form.id;
-
-        const sql = `INSERT INTO forms (form_type, project_no, event, venue, periode, periode_start, periode_end, management_fee_pct, data, note, status, version_number, root_form_id, revision_note, parent_id, created_by, division_id, approval_stage, rejected_by, rejected_at)
+        const insertSql = `INSERT INTO forms (form_type, project_no, event, venue, periode, periode_start, periode_end, management_fee_pct, data, note, status, version_number, root_form_id, revision_note, parent_id, created_by, division_id, approval_stage, rejected_by, rejected_at)
                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-        const params = [
+        const insertParams = [
             form.form_type, form.project_no, form.event, form.venue, form.periode, form.periode_start, form.periode_end,
             form.management_fee_pct, form.data, form.note,
             STATUS.REVISION, form.version_number + 1, rootId || id,
-            note, id, req.user.id, form.division_id, 'pending_1st', req.user.id, new Date().toISOString()
+            note, id, form.created_by, form.division_id, 'pending_1st', req.user.id, new Date().toISOString()
         ];
 
-        db.run(sql, params, function (err) {
+        // Create new revision first, then archive old — both must succeed
+        db.run(insertSql, insertParams, function (err) {
             if (err) return res.status(500).json({ error: err.message });
+            const newId = this.lastID;
+            // Archive the rejected form only after new revision is safely created
+            db.run(`UPDATE forms SET status = 'archived', updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [id], () => {});
             db.run(`INSERT INTO approval_history (form_id, action, note, actor_id) VALUES (?, 'reject', ?, ?)`, [id, note, req.user.id], () => {});
-            res.status(201).json({ id: this.lastID, message: 'Form sent back for revision. New version created.' });
+            res.status(201).json({ id: newId, message: 'Form sent back for revision. New version created.' });
         });
     });
 });
@@ -504,31 +499,42 @@ app.get('/api/forms/:id/approval-history', (req, res) => {
     );
 });
 
-// 14. PUT /api/forms/:id/unlock (Admin unlocks an approved form back to draft for re-submission)
+// 14. PUT /api/forms/:id/unlock (Admin unlocks an approved form back to revision)
 app.put('/api/forms/:id/unlock', (req, res) => {
     if (req.user.role !== 'admin') {
         return res.status(403).json({ error: 'Only Admin can unlock approved forms' });
     }
 
     const { id } = req.params;
-    db.get('SELECT status FROM forms WHERE id = ?', [id], (err, row) => {
+    db.get('SELECT * FROM forms WHERE id = ?', [id], (err, form) => {
         if (err) return res.status(500).json({ error: err.message });
-        if (!row) return res.status(404).json({ error: 'Form not found' });
+        if (!form) return res.status(404).json({ error: 'Form not found' });
 
-        if (row.status !== STATUS.APPROVED) {
+        if (form.status !== STATUS.APPROVED) {
             return res.status(400).json({ error: 'Only approved forms can be unlocked' });
         }
 
-        // Archive current approved
-        db.run(`UPDATE forms SET status = 'archived', updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [id], () => {});
+        const rootId = form.root_form_id || form.id;
+        const newVersion = (form.version_number || 1) + 1;
 
-        db.run(`UPDATE forms SET status = ?, approved_by = NULL, approved_at = NULL, version_number = version_number + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-            [STATUS.REVISION, id],
-            function (err) {
-                if (err) return res.status(500).json({ error: err.message });
-                res.json({ id, message: 'Approved form unlocked back to revision. Please submit again.' });
-            }
-        );
+        // Create a new revision copy — preserves the approved snapshot
+        const sql = `INSERT INTO forms
+            (form_type, project_no, event, venue, periode, periode_start, periode_end,
+             management_fee_pct, data, note, status, version_number, root_form_id,
+             parent_id, created_by, division_id, approval_stage)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+        const params = [
+            form.form_type, form.project_no, form.event, form.venue, form.periode,
+            form.periode_start, form.periode_end, form.management_fee_pct, form.data,
+            form.note, STATUS.REVISION, newVersion, rootId,
+            form.id, form.created_by, form.division_id, 'pending_1st'
+        ];
+
+        db.run(sql, params, function (err) {
+            if (err) return res.status(500).json({ error: err.message });
+            const newId = this.lastID;
+            res.json({ id: newId, message: 'New revision created from approved form. Please edit and re-submit.' });
+        });
     });
 });
 

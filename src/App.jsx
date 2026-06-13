@@ -585,15 +585,15 @@ function App({ user, token, onLogout }) {
     };
 
     const handleUnlockForm = async () => {
-        const confirmed = await showDialog('confirm', 'Unlock this approved form for revision? The current approved version will be archived.', 'Unlock Approved Form');
+        const confirmed = await showDialog('confirm', 'Unlock this approved form for revision? A new revision copy will be created.', 'Unlock Approved Form');
         if (!confirmed) return;
         try {
             const res = await fetch(`${API}/api/forms/${currentFormId}/unlock`, { method: 'PUT', headers: authHeaders });
             const data = await res.json();
             if (!res.ok) { await showDialog('alert', data.error || 'Failed', 'Error'); return; }
-            setCurrentStatus(STATUS.REVISION);
-            setCurrentVersion(currentVersion + 1);
-            await showDialog('alert', 'Approved form unlocked back to revision. Please edit and re-submit.', 'Unlocked');
+            await showDialog('alert', 'New revision created. Loading the revision now.', 'Unlocked');
+            // Load the newly created revision form
+            loadForm(data.id);
         } catch (e) { await showDialog('alert', 'Failed', 'Error'); }
     };
 
