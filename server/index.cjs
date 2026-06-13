@@ -614,10 +614,7 @@ app.put('/api/forms/:id/po', (req, res) => {
         if (err) return res.status(500).json({ error: err.message });
         if (!form) return res.status(404).json({ error: 'Form not found' });
 
-        // Allow update if has_po is set (PO initiated) OR if corporate (always can set)
-        if (!form.has_po && req.user.role !== 'corporate') {
-            return res.status(400).json({ error: 'PO must be created first before setting PO Number' });
-        }
+        // Allow update if has_po is set (PO initiated) OR if corporate or admin (always can set)
 
         // Update po_number and optionally per-row item data (for per-row PO numbers)
         const dataToSave = items ? JSON.stringify(items) : form.data;

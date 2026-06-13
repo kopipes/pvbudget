@@ -331,7 +331,14 @@ function App({ user, token, onLogout }) {
             return;
         }
         // For other fields, check canEditItemById
-        if (!canEditItemById(mainId)) return;
+        // On realisasi tab: also allow editing new items (canEditAllFields handled in SortableRow,
+        // but we need to allow the update to go through for new items past threshold)
+        const isRealisasiNewItem = activeTab === 'realisasi' && (() => {
+            const idx = items.findIndex(i => i.id === mainId);
+            const thresh = (activeTab === 'realisasi' && !isRealizationForm) ? baseItemCountRealisasi : baseItemCount;
+            return idx >= thresh;
+        })();
+        if (!canEditItemById(mainId) && !isRealisasiNewItem) return;
         setItems(items.map(item => {
             if (item.id === mainId) return { ...item, subs: item.subs.map(sub => sub.id === subId ? { ...sub, [field]: value } : sub) };
             return item;
