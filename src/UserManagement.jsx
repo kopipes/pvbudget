@@ -90,13 +90,15 @@ export default function UserManagement({ token, onClose }) {
             const data = await res.json();
             if (!res.ok) { setError(data.error || 'Failed to save user'); return; }
     
-            // Save managed divisions for managers
+            // Save managed divisions: always update if old or new role is manager
             const savedUserId = editingUser ? editingUser.id : data.id;
-            if ((body.role === 'manager' || editingUser?.role === 'manager') && savedUserId) {
+            if (savedUserId && (body.role === 'manager' || editingUser?.role === 'manager')) {
+                // If role changed away from manager, clear divisions; otherwise save current selection
+                const divisionsToSave = body.role === 'manager' ? managedDivisions : [];
                 await fetch(`${API}/api/users/${savedUserId}/managed-divisions`, {
                     method: 'PUT',
                     headers,
-                    body: JSON.stringify({ division_ids: managedDivisions })
+                    body: JSON.stringify({ division_ids: divisionsToSave })
                 });
             }
 

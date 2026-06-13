@@ -31,16 +31,18 @@ const STATUS = {
 };
 
 // ---- Check if user can edit a form ----
+// Returns true = readonly, false = editable
 function canEditForm(user, form, callback) {
     const role = user.role?.toLowerCase();
-    if (role === 'admin') return callback(null, false); // admin can edit anything
+    if (role === 'admin') return callback(null, false); // admin can always edit
     if (role === 'corporate') return callback(null, true); // corporate always readonly
-    // For non-approved forms: owner can always edit (use string comparison to avoid type mismatch)
+    // For non-approved forms: owner can edit
     if (form.status !== STATUS.APPROVED) {
         return callback(null, String(form.created_by) !== String(user.id));
     }
-    // Approved forms are locked by default
-    return callback(null, true);
+    // Approved forms: owner is NOT readonly (they can still edit realisasi data)
+    // Other users are readonly on approved forms
+    return callback(null, String(form.created_by) !== String(user.id));
 }
 
 // ---- Visibility: what forms can this user see? ----
@@ -195,8 +197,8 @@ app.get('/api/forms/:id/history', (req, res) => {
         const rootId = row && row.root_form_id ? row.root_form_id : id;
 
         const vis = buildFormVisibility(req.user);
-        const sql = `${vis.select} ${vis.join ? vis.join : ''} WHERE (f.id = ? OR f.root_form_id = ?) AND f.status != 'archived' ORDER BY f.version_number ASC`;
-        db.all(sql, [...vis.params, rootId, rootId], (err, rows) => {
+        const sql = `${vis.select} ${vis.join ? vis.join : ''} WHERE (f.id = ? OR f.root_form_id = ?) AND f.status != 'archived'${vis.where} ORDER BY f.version_number ASC`;
+        db.all(sql, [rootId, rootId, ...vis.params], (err, rows) => {
             if (err) return res.status(500).json({ error: err.message });
             res.json(rows);
         });
@@ -486,17 +488,24 @@ app.delete('/api/forms/:id', (req, res) => {
 // 13. GET /api/forms/:id/approval-history
 app.get('/api/forms/:id/approval-history', (req, res) => {
     const { id } = req.params;
-    db.all(
-        `SELECT ah.*, u.display_name as actor_name
-         FROM approval_history ah
-         JOIN users u ON ah.actor_id = u.id
-         WHERE ah.form_id = ? ORDER BY ah.created_at ASC`,
-        [id],
-        (err, rows) => {
-            if (err) return res.status(500).json({ error: err.message });
-            res.json(rows);
-        }
-    );
+    const vis = buildFormVisibility(req.user);
+    // Verify the requesting user can see this form before returning its history
+    const checkSql = `SELECT f.id FROM forms f LEFT JOIN users u ON f.created_by = u.id WHERE f.id = ?${vis.where}`;
+    db.get(checkSql, [id, ...vis.params], (err, row) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!row) return res.status(404).json({ error: 'Form not found' });
+        db.all(
+            `SELECT ah.*, u.display_name as actor_name
+             FROM approval_history ah
+             JOIN users u ON ah.actor_id = u.id
+             WHERE ah.form_id = ? ORDER BY ah.created_at ASC`,
+            [id],
+            (err, rows) => {
+                if (err) return res.status(500).json({ error: err.message });
+                res.json(rows);
+            }
+        );
+    });
 });
 
 // 14. PUT /api/forms/:id/unlock (Admin unlocks an approved form back to revision)
@@ -661,6 +670,11 @@ app.post('/api/forms/:id/create-realization', (req, res) => {
     db.get('SELECT * FROM forms WHERE id = ?', [id], (err, form) => {
         if (err) return res.status(500).json({ error: err.message });
         if (!form) return res.status(404).json({ error: 'Form not found' });
+
+        // Only owner or admin can create realization
+        if (req.user.role !== 'admin' && String(form.created_by) !== String(req.user.id)) {
+            return res.status(403).json({ error: 'Only the form owner or admin can create a realization form' });
+        }
 
         // Only allow creating realization from approved budget forms
         // Treat null/undefined form_type as 'budget' for backward compatibility

@@ -99,6 +99,7 @@ function App({ user, token, onLogout }) {
     const canEdit = !isCorporate && !isReadOnly && [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus);
     // PO Number: admin/manager can edit
     const canEditPOFields = isAdmin || isManager;
+    const canEditPONumber = isAdmin || isManager;
     const canEditRealisasi = isAdmin || (!isReadOnly && !isCorporate && (canEdit || (currentStatus === STATUS.APPROVED && activeTab === 'realisasi' && hasRealization && String(loadedForm?.created_by) === String(user.id))));
     const canSubmit = [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus) && (currentStatus !== STATUS.REVISION || currentFormId);
     const canApprove = isAdmin || isCorporate;
@@ -467,9 +468,6 @@ function App({ user, token, onLogout }) {
         } catch (e) { await showDialog('alert', 'Failed to save PO', 'Error'); }
     };
 
-    // Check if user can edit PO Number (Admin or Manager only, NOT Corporate)
-    const canEditPONumber = isAdmin || isManager;
-
     // Handle enabling REALISASI tab - calls backend to mark form as having realization
     const handleCreateRealization = async () => {
         if (!currentFormId || currentStatus !== STATUS.APPROVED) return;
@@ -532,10 +530,6 @@ function App({ user, token, onLogout }) {
     };
 
     const handleSubmitForm = async () => {
-        if (!canEdit && currentStatus === STATUS.DRAFT) {
-            await showDialog('alert', 'Please save the form before submitting.', 'Save First');
-            return;
-        }
         if (!currentFormId) { await showDialog('alert', 'Please save the form first.', 'Save First'); return; }
         const confirmed = await showDialog('confirm', 'Submit this form for corporate approval? You cannot edit it after submission.', 'Submit for Approval');
         if (!confirmed) return;
@@ -613,7 +607,10 @@ function App({ user, token, onLogout }) {
         try {
             const res = await fetch(`${API}/api/forms?query=${encodeURIComponent(query)}&type=${typeFilter}`, { headers: authHeaders });
             if (res.status === 401) { onLogout(); return; }
-            if (res.ok) setFormList(await res.json());
+            if (res.ok) {
+                const result = await res.json();
+                setFormList(result.data || result || []);
+            }
         } catch (e) { console.error(e); }
     };
 
@@ -650,6 +647,7 @@ function App({ user, token, onLogout }) {
                 setCurrentStatus(form.status);
                 setCurrentVersion(form.version_number || 1);
                 setIsReadOnly(form.readonly || false);
+                setBaseItemCountRealisasi(0);
                 const mgmtFee = form.management_fee_pct != null ? form.management_fee_pct : 10;
                 setEventData({
                     projectNo: form.project_no || '', name: form.event || '', venue: form.venue || '',

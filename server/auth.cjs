@@ -111,7 +111,7 @@ function authMiddleware(req, res, next) {
                 // Get divisions managed by this manager
                 if (user.role === 'manager') {
                     db.all(`SELECT division_id FROM manager_divisions WHERE manager_id = ?`, [user.id], (err, divs) => {
-                        user.managedDivisions = divs.map(r => r.division_id);
+                        user.managedDivisions = err ? [] : divs.map(r => r.division_id);
                         req.user = user;
                         next();
                     });
@@ -137,14 +137,7 @@ function requireRole(...roles) {
 
 // Cleanup expired sessions - call periodically
 function cleanupExpiredSessions() {
-    db.all('SELECT token, created_at FROM sessions', [], (err, sessions) => {
-        if (err) return;
-        sessions.forEach(session => {
-            if (isSessionExpired(session)) {
-                db.run('DELETE FROM sessions WHERE token = ?', [session.token], () => {});
-            }
-        });
-    });
+    db.run(`DELETE FROM sessions WHERE created_at < datetime('now', '-${SESSION_EXPIRY_HOURS} hours')`, [], () => {});
 }
 
 // Run cleanup every hour

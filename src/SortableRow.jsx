@@ -64,8 +64,8 @@ function SortableRow({
 // Sub-item component with sortable capability - uses composite id (mainId_subId)
 function SortableSubItem({ 
     sub, mainItemId, canEditAllFields, activeTab, canEditActualRate,
-    formatCurrency, parseCurrency, updateSubItem, removeSubItem, mainIndex,
-    isManagerOrCorporate, threshold, mainIndex: subMainIndex 
+    formatCurrency, parseCurrency, updateSubItem, removeSubItem,
+    isManagerOrCorporate, threshold, mainIndex
 }) {
     // Use composite id to make each sub-item sortable across all main items
     const sortableId = `${mainItemId}_${sub.id}`;
@@ -79,7 +79,7 @@ function SortableSubItem({
     const isPOTab = activeTab === 'po';
     // In REALISASI tab: only Realisasi column and NEW items (after threshold) are editable
     const isRealisasiTab = activeTab === 'realisasi';
-    const isNewItem = subMainIndex >= threshold;
+    const isNewItem = mainIndex >= threshold;
     const canEditInRealisasi = isNewItem;
     const canEditRealisasiColumn = isRealisasiTab;
     
@@ -136,7 +136,7 @@ function SortableSubItem({
                 </td>
             )}
             <td className="col-actions">
-                {(canEditAllFields || (isRealisasiTab && canEditInRealisasi)) && <button className="btn-icon" title="Remove Sub Item" onClick={() => removeSubItem(mainItemId, subMainIndex, sub.id)}><Trash2 size={18} /></button>}
+                {(canEditAllFields || (isRealisasiTab && canEditInRealisasi)) && <button className="btn-icon" title="Remove Sub Item" onClick={() => removeSubItem(mainItemId, mainIndex, sub.id)}><Trash2 size={18} /></button>}
             </td>
         </tr>
     );
