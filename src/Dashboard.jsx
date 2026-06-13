@@ -58,7 +58,6 @@ function Dashboard({ user, token, onLogout, onOpenForm }) {
   const isAdmin = user.role === 'admin';
   const isCorporate = user.role === 'corporate';
   const isManager = user.role === 'manager';
-  const isUser = user.role === 'user';
   const canApprove = isAdmin || isCorporate;
   const canCreate = !isCorporate;
   const canSeeOnOpen = !!onOpenForm;

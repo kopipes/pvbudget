@@ -34,14 +34,9 @@ const STATUS = {
 // Returns true = readonly, false = editable
 function canEditForm(user, form, callback) {
     const role = user.role?.toLowerCase();
-    if (role === 'admin') return callback(null, false); // admin can always edit
+    if (role === 'admin') return callback(null, false); // admin never readonly
     if (role === 'corporate') return callback(null, true); // corporate always readonly
-    // For non-approved forms: owner can edit
-    if (form.status !== STATUS.APPROVED) {
-        return callback(null, String(form.created_by) !== String(user.id));
-    }
-    // Approved forms: owner is NOT readonly (they can still edit realisasi data)
-    // Other users are readonly on approved forms
+    // Owner is editable; non-owners are readonly
     return callback(null, String(form.created_by) !== String(user.id));
 }
 
@@ -603,10 +598,10 @@ app.post('/api/forms/:id/create-po', (req, res) => {
     });
 });
 
-// 16. PUT /api/forms/:id/po (Update PO number - Admin/Manager/Corporate)
+// 16. PUT /api/forms/:id/po (Update PO number and per-row PO data - Admin/Manager/Corporate)
 app.put('/api/forms/:id/po', (req, res) => {
     const { id } = req.params;
-    const { po_number } = req.body;
+    const { po_number, items } = req.body;
 
     // Admin, Manager, and Corporate can update PO Number
     if (req.user.role !== 'admin' && req.user.role !== 'manager' && req.user.role !== 'corporate') {
@@ -626,8 +621,10 @@ app.put('/api/forms/:id/po', (req, res) => {
             return res.status(400).json({ error: 'PO must be created first before setting PO Number' });
         }
 
-        db.run(`UPDATE forms SET po_number = ?, has_po = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, 
-            [po_number.trim(), id], 
+        // Update po_number and optionally per-row item data (for per-row PO numbers)
+        const dataToSave = items ? JSON.stringify(items) : form.data;
+        db.run(`UPDATE forms SET po_number = ?, has_po = 1, data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, 
+            [po_number.trim(), dataToSave, id], 
             function (err) {
                 if (err) return res.status(500).json({ error: err.message });
                 res.json({ 
@@ -741,68 +738,7 @@ app.post('/api/forms/:id/create-realization', (req, res) => {
     });
 });
 
- // ===== DIVISIONS API ROUTES =====
- app.use('/api/divisions', authMiddleware);
-
- app.get('/api/divisions', (req, res) => {
-     db.all('SELECT * FROM divisions ORDER BY name ASC', (err, rows) => {
-         if (err) return res.status(500).json({ error: err.message });
-         res.json(rows);
-     });
- });
-
- app.post('/api/divisions', (req, res) => {
-     if (req.user.role !== 'admin') {
-         return res.status(403).json({ error: 'Only admin can create divisions' });
-     }
-     const { name, description } = req.body;
-     if (!name || !name.trim()) {
-         return res.status(400).json({ error: 'Division name is required' });
-     }
-     db.run('INSERT INTO divisions (name, description) VALUES (?, ?)', [name.trim(), description || ''], function (err) {
-         if (err) return res.status(500).json({ error: err.message });
-         res.status(201).json({ id: this.lastID, name: name.trim(), description: description || '' });
-     });
- });
-
- app.put('/api/divisions/:id', (req, res) => {
-     if (req.user.role !== 'admin') {
-         return res.status(403).json({ error: 'Only admin can update divisions' });
-     }
-     const { id } = req.params;
-     const { name, description } = req.body;
-     if (!name || !name.trim()) {
-         return res.status(400).json({ error: 'Division name is required' });
-     }
-     db.run('UPDATE divisions SET name = ?, description = ? WHERE id = ?', [name.trim(), description || '', id], function (err) {
-         if (err) return res.status(500).json({ error: err.message });
-         res.json({ id, name: name.trim(), description: description || '' });
-     });
- });
-
- app.delete('/api/divisions/:id', (req, res) => {
-     if (req.user.role !== 'admin') {
-         return res.status(403).json({ error: 'Only admin can delete divisions' });
-     }
-     const { id } = req.params;
-     // Check if division is in use
-     db.get('SELECT COUNT(*) as count FROM users WHERE division_id = ?', [id], (err, row) => {
-         if (err) return res.status(500).json({ error: err.message });
-         if (row && row.count > 0) {
-             return res.status(400).json({ error: 'Cannot delete division that is assigned to users' });
-         }
-         db.get('SELECT COUNT(*) as count FROM forms WHERE division_id = ?', [id], (err2, row2) => {
-             if (err2) return res.status(500).json({ error: err2.message });
-             if (row2 && row2.count > 0) {
-                 return res.status(400).json({ error: 'Cannot delete division that is assigned to forms' });
-             }
-             db.run('DELETE FROM divisions WHERE id = ?', [id], function (err3) {
-                 if (err3) return res.status(500).json({ error: err3.message });
-                 res.json({ message: 'Division deleted successfully' });
-             });
-         });
-     });
- });
+ // Division routes are handled by setupUserRoutes in auth.cjs
 
  // Serve static frontend files in production
 const distPath = path.join(__dirname, '..', 'dist');

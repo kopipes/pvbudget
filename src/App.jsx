@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, PlusCircle, Save, FileDown, FilePlus, Search, X, AlertTriangle, LogOut, Shield, Building2, Send, Check, RefreshCw, Clock, CheckCircle, XCircle, History, Eye, LayoutDashboard, Receipt, GripVertical } from 'lucide-react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
@@ -98,7 +98,6 @@ function App({ user, token, onLogout }) {
     // Can edit: only on draft/revision status (admin included, except archived)
     const canEdit = !isCorporate && !isReadOnly && [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus);
     // PO Number: admin/manager can edit
-    const canEditPOFields = isAdmin || isManager;
     const canEditPONumber = isAdmin || isManager;
     const canEditRealisasi = isAdmin || (!isReadOnly && !isCorporate && (canEdit || (currentStatus === STATUS.APPROVED && activeTab === 'realisasi' && hasRealization && String(loadedForm?.created_by) === String(user.id))));
     const canSubmit = [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus) && (currentStatus !== STATUS.REVISION || currentFormId);
@@ -146,7 +145,10 @@ function App({ user, token, onLogout }) {
         } catch (e) { console.error(e); }
     };
 
+    const [promptValue, setPromptValue] = React.useState('');
+
     const showDialog = (type, message, title = '') => {
+        if (type === 'prompt') setPromptValue('');
         return new Promise((resolve) => {
             setDialogConfig({ type, message, title,
                 onConfirm: (val) => { setDialogConfig(null); resolve(val !== undefined ? val : true); },
@@ -260,48 +262,9 @@ function App({ user, token, onLogout }) {
         });
     };
 
-    // PO Section Component (displayed when on PO tab)
-    const POSection = () => (
-        <div style={{ padding: '1.5rem', background: 'var(--surface)', borderRadius: '12px', border: '1px solid var(--border)', marginBottom: '1rem' }}>
-            <h3 style={{ margin: '0 0 1rem 0', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Receipt size={20} /> Purchase Order Information
-            </h3>
-            <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                <div style={{ flex: '1', minWidth: '250px' }}>
-                    <label style={{ fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', fontSize: '0.875rem' }}>PO Number *</label>
-                    <input 
-                        type="text" 
-                        value={poNumber} 
-                        onChange={(e) => setPoNumber(e.target.value)} 
-                        placeholder="Enter PO Number (e.g., PO/2026/001)"
-                        disabled={!canEditPONumber}
-                        style={{ 
-                            width: '100%', 
-                            padding: '0.75rem 1rem', 
-                            borderRadius: '8px', 
-                            border: canEditPONumber ? '1px solid var(--border)' : '1px solid var(--border)',
-                            background: canEditPONumber ? 'var(--surface)' : 'var(--bg-color)',
-                            fontSize: '1rem',
-                            marginTop: '0.5rem'
-                        }}
-                    />
-                </div>
-                {canEditPONumber && (
-                    <button className="btn btn-primary" onClick={handleSavePONumber} style={{ marginBottom: '0' }}>
-                        <Save size={16} /> Save PO Number
-                    </button>
-                )}
-            </div>
-            {!canEditPONumber && (
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem', fontStyle: 'italic' }}>
-                    Only Manager, Corporate, or Admin can edit PO Number.
-                </p>
-            )}
-        </div>
-    );
-    
 
-    const canAddItems = canEdit || isRealizationForm || (activeTab === 'realisasi' && canEditRealisasi);
+    // Admin can always add/edit items on non-archived forms regardless of status
+    const canAddItems = (isAdmin && currentStatus !== 'archived') || canEdit || isRealizationForm || (activeTab === 'realisasi' && canEditRealisasi);
     const addMainItem = () => { 
         if (!canAddItems) return; 
         setItems([...items, { id: generateId(), name: 'NEW ITEM', subs: [] }]);
@@ -441,29 +404,23 @@ function App({ user, token, onLogout }) {
         } catch (e) { await showDialog('alert', 'Failed to create PO', 'Error'); }
     };
 
-    // Handle saving PO Number - updates both main form PO Number and per-row PO Numbers
+    // Handle saving PO Number - uses dedicated /po endpoint to avoid approved-form lock
     const handleSavePONumber = async () => {
         if (!currentFormId) return;
         try {
-            // First, save the main form data including per-row PO Numbers using the standard update endpoint
-            const dataToSave = {
-                project_no: eventData.projectNo, event: eventData.name, venue: eventData.venue,
-                periode: eventData.periode, periode_start: eventData.periodeStart, periode_end: eventData.periodeEnd,
-                management_fee_pct: eventData.managementFeePercent, note: eventData.note,
-                division_id: selectedDivisionId || null, data: items
-            };
-            const res = await fetch(`${API}/api/forms/${currentFormId}`, { 
-                method: 'PUT', 
-                headers: authHeaders, 
-                body: JSON.stringify(dataToSave) 
+            // Save main PO number via dedicated endpoint
+            const res = await fetch(`${API}/api/forms/${currentFormId}/po`, {
+                method: 'PUT',
+                headers: authHeaders,
+                body: JSON.stringify({ po_number: poNumber, items })
             });
             if (!res.ok) {
                 const data = await res.json();
-                await showDialog('alert', data.error || 'Failed to save form data', 'Error');
+                await showDialog('alert', data.error || 'Failed to save PO Number', 'Error');
                 return;
             }
-            // Update loadedForm with current items
-            setLoadedForm(prev => prev ? { ...prev, data: items } : null);
+            // Update loadedForm with current items (per-row PO numbers)
+            setLoadedForm(prev => prev ? { ...prev, data: items, po_number: poNumber } : null);
             await showDialog('alert', 'PO Number saved successfully!', 'Success');
         } catch (e) { await showDialog('alert', 'Failed to save PO', 'Error'); }
     };
@@ -1408,16 +1365,16 @@ function App({ user, token, onLogout }) {
                         </div>
                         <div style={{ padding: '1rem 0' }}><p>{dialogConfig.message}</p>
                             {dialogConfig.type === 'prompt' && (
-                                <input type="text" autoFocus style={{ width: '100%', marginTop: '1rem', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }}
-                                    onKeyDown={(e) => { if (e.key === 'Enter') { const el = document.getElementById('prompt-input-modal'); dialogConfig.onConfirm(el ? el.value : ''); } else if (e.key === 'Escape') dialogConfig.onCancel(); }}
-                                    id="prompt-input-modal"
+                                <input type="text" autoFocus value={promptValue} onChange={(e) => setPromptValue(e.target.value)}
+                                    style={{ width: '100%', marginTop: '1rem', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }}
+                                    onKeyDown={(e) => { if (e.key === 'Enter') dialogConfig.onConfirm(promptValue); else if (e.key === 'Escape') dialogConfig.onCancel(); }}
                                 />
                             )}
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem' }}>
                             {dialogConfig.type !== 'alert' && <button className="btn btn-secondary" onClick={dialogConfig.onCancel}>Cancel</button>}
                             <button className="btn btn-primary" onClick={() => {
-                                if (dialogConfig.type === 'prompt') { const el = document.getElementById('prompt-input-modal'); dialogConfig.onConfirm(el ? el.value : ''); }
+                                if (dialogConfig.type === 'prompt') dialogConfig.onConfirm(promptValue);
                                 else dialogConfig.onConfirm(true);
                             }}>OK</button>
                         </div>
