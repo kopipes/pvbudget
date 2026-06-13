@@ -731,11 +731,25 @@ function App({ user, token, onLogout }) {
                 } catch (e) { console.error('Failed to load realization data', e); }
             }
         } else if (tab === 'budget' || tab === 'po') {
-            // For BUDGET and PO tabs, use the loaded form data (which now includes PO Numbers)
-            if (loadedForm && loadedForm.data && Array.isArray(loadedForm.data)) {
-                setItems(loadedForm.data);
-                setEventData(prev => ({ ...prev, managementFeePercent: loadedForm.management_fee_pct != null ? loadedForm.management_fee_pct : 10 }));
-                setPoNumber(loadedForm.po_number || '');
+            // Re-fetch form to get latest data (including PO numbers saved since last load)
+            try {
+                const res = await fetch(`${API}/api/forms/${currentFormId}`, { headers: authHeaders });
+                if (res.ok) {
+                    const freshForm = await res.json();
+                    setLoadedForm(freshForm);
+                    if (freshForm.data && Array.isArray(freshForm.data)) {
+                        setItems(freshForm.data);
+                        setBaseItemCount(freshForm.data.length);
+                    }
+                    setEventData(prev => ({ ...prev, managementFeePercent: freshForm.management_fee_pct != null ? freshForm.management_fee_pct : 10 }));
+                    setPoNumber(freshForm.po_number || '');
+                }
+            } catch (e) {
+                // Fallback to cached loadedForm
+                if (loadedForm && loadedForm.data && Array.isArray(loadedForm.data)) {
+                    setItems(loadedForm.data);
+                    setPoNumber(loadedForm.po_number || '');
+                }
             }
         }
     };
