@@ -26,6 +26,7 @@ function SortableRow({
                 </td>
                 <td></td><td></td><td></td><td></td>
                 {activeTab === 'realisasi' && <td></td>}
+                {activeTab === 'realisasi' && <td></td>}
                 {activeTab === 'po' && <td style={{ background: 'rgba(16,185,129,0.05)', width: '120px' }}></td>}
                 <td className="col-actions" style={{ display: 'flex', gap: '4px' }}>
                     {canEditAllFields && (

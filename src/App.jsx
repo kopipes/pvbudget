@@ -545,6 +545,7 @@ function App({ user, token, onLogout }) {
 
     const handleApproveForm = async () => {
         const note = await showDialog('prompt', 'Add approval note (optional):', 'Approve Form');
+        if (note === null) return; // user cancelled
         try {
             const res = await fetch(`${API}/api/forms/${currentFormId}/approve`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ note: note || '' }) });
             const data = await res.json();
@@ -603,7 +604,7 @@ function App({ user, token, onLogout }) {
         } catch (e) { await showDialog('alert', 'Failed to delete', 'Error'); }
     };
 
-    const fetchForms = async (query = '', typeFilter = activeTab) => {
+    const fetchForms = async (query = '', typeFilter = 'budget') => {
         try {
             const res = await fetch(`${API}/api/forms?query=${encodeURIComponent(query)}&type=${typeFilter}`, { headers: authHeaders });
             if (res.status === 401) { onLogout(); return; }
@@ -893,8 +894,12 @@ function App({ user, token, onLogout }) {
 
         wsData.push([]);
         const metricsStartRow = wsData.length;
+        // Submitted Budget = Grand Total (total + PPN)
+        // After PPN = Total (before PPN) — matches in-app afterPpn = totalBudget
+        // After PPH = After PPN * 0.98
+        // P/L = After PPH - Internal Grand Total
         wsData.push(['', '', '', 'Submitted Budget', { t: 'n', f: cellRef(grandTotalRowIdx, 4), z: acctFormat }]);
-        wsData.push(['', '', '', 'After PPN', { t: 'n', f: `${cellRef(metricsStartRow, 4)}*1.11`, z: acctFormat }]);
+        wsData.push(['', '', '', 'After PPN', { t: 'n', f: cellRef(totalRowIdx, 4), z: acctFormat }]);
         wsData.push(['', '', '', 'After PPH', { t: 'n', f: `${cellRef(metricsStartRow + 1, 4)}*0.98`, z: acctFormat }]);
         wsData.push(['', '', '', 'P/L (Budget)', { t: 'n', f: `${cellRef(metricsStartRow + 2, 4)}-${cellRef(grandTotalRowIdx, 3)}`, z: acctFormat }]);
         if (activeTab === 'realisasi') {
@@ -1258,7 +1263,7 @@ function App({ user, token, onLogout }) {
                             );
                         })}
                     </SortableContext>
-                        <tr><td colSpan={activeTab === 'realisasi' ? 8 : 7} style={{ height: '0.5rem' }}></td></tr>
+                        <tr><td colSpan={(activeTab === 'realisasi' || activeTab === 'po') ? 8 : 7} style={{ height: '0.5rem' }}></td></tr>
                         {(canEdit || isRealizationForm || (activeTab === 'realisasi' && canEditRealisasi)) && (
                             <tr>
                                 <td></td>

@@ -197,7 +197,8 @@ app.get('/api/forms/:id/history', (req, res) => {
         const rootId = row && row.root_form_id ? row.root_form_id : id;
 
         const vis = buildFormVisibility(req.user);
-        const sql = `${vis.select} ${vis.join ? vis.join : ''} WHERE (f.id = ? OR f.root_form_id = ?) AND f.status != 'archived'${vis.where} ORDER BY f.version_number ASC`;
+        // Include archived so version history shows all snapshots including approved ones that were superseded
+        const sql = `${vis.select} ${vis.join ? vis.join : ''} WHERE (f.id = ? OR f.root_form_id = ?)${vis.where} ORDER BY f.version_number ASC`;
         db.all(sql, [rootId, rootId, ...vis.params], (err, rows) => {
             if (err) return res.status(500).json({ error: err.message });
             res.json(rows);
@@ -317,6 +318,10 @@ app.put('/api/forms/:id', (req, res) => {
         }
 
         if (isRealizaOnlyUpdate) {
+            // Only owner or admin can update realisasi data
+            if (!isOwner && user.role !== 'admin') {
+                return res.status(403).json({ error: 'Only the form owner or admin can update realisasi data' });
+            }
             // Only update realiza_data, leave everything else untouched
             db.run(`UPDATE forms SET realiza_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
                 [JSON.stringify(realiza_data), id],
@@ -332,8 +337,10 @@ app.put('/api/forms/:id', (req, res) => {
         const params = [
             project_no || '', event || '', venue || '', periode || '', periode_start || '', periode_end || '',
             management_fee_pct != null ? management_fee_pct : 10,
-            JSON.stringify(data || []), note || '', division_id, 
-            realiza_data ? JSON.stringify(realiza_data) : null, id
+            JSON.stringify(data || []), note || '', division_id,
+            // Preserve existing realiza_data if not explicitly provided
+            realiza_data !== undefined ? JSON.stringify(realiza_data) : form.realiza_data || null,
+            id
         ];
 
         db.run(sql, params, function (err) {
@@ -457,8 +464,10 @@ app.post('/api/forms/:id/reject', (req, res) => {
         db.run(insertSql, insertParams, function (err) {
             if (err) return res.status(500).json({ error: err.message });
             const newId = this.lastID;
-            // Archive the rejected form only after new revision is safely created
-            db.run(`UPDATE forms SET status = 'archived', updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [id], () => {});
+            // Archive the rejected form and log history — new revision is already safely created
+            db.run(`UPDATE forms SET status = 'archived', updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [id], (archiveErr) => {
+                if (archiveErr) console.error('Failed to archive rejected form:', archiveErr.message);
+            });
             db.run(`INSERT INTO approval_history (form_id, action, note, actor_id) VALUES (?, 'reject', ?, ?)`, [id, note, req.user.id], () => {});
             res.status(201).json({ id: newId, message: 'Form sent back for revision. New version created.' });
         });

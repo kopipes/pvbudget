@@ -184,14 +184,14 @@ td.col-po {
 
 /* Sub rows and headers */
 .row-main-item td {
-  background-color: #E2E8F0;
+  background-color: var(--border);
   font-weight: 700;
   font-size: 0.95rem;
 }
 
 .row-sub-item:hover,
 .row-main-item:hover {
-  background-color: #F8FAFC;
+  background-color: var(--bg-color);
 }
 
 /* Table Inputs */

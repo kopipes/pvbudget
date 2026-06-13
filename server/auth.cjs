@@ -162,7 +162,7 @@ function setupAuthRoutes(app) {
             return res.status(400).json({ error: 'Username and password are required' });
         }
 
-        db.get('SELECT * FROM users WHERE username = ?', [username], (err, user) => {
+        db.get(`SELECT u.*, d.name as division_name FROM users u LEFT JOIN divisions d ON u.division_id = d.id WHERE u.username = ?`, [username], (err, user) => {
             if (err) {
                 return res.status(500).json({ error: err.message });
             }
@@ -193,7 +193,8 @@ function setupAuthRoutes(app) {
                         display_name: user.display_name,
                         role: user.role,
                         manager_id: user.manager_id,
-                        division_id: user.division_id
+                        division_id: user.division_id,
+                        division_name: user.division_name || ''
                     }
                 });
             });

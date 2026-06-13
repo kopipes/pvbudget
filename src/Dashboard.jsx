@@ -84,17 +84,18 @@ function Dashboard({ user, token, onLogout, onOpenForm }) {
       const mine = Array.isArray(rawMine) ? rawMine : (rawMine.data || []);
       const pending = Array.isArray(rawPending) ? rawPending : (rawPending.data || []);
 
-      // Build stats
+      // Build stats — use pagination.total for accurate total count
+      const totalCount = rawAll.pagination ? rawAll.pagination.total : allForms.length;
       const byStatus = {};
       allForms.forEach(f => { byStatus[f.status] = (byStatus[f.status] || 0) + 1; });
 
       // Revision forms for current user
       const revisions = mine.filter(f => f.status === STATUS.revision);
 
-      // Recent forms (latest 20)
-      const recent = allForms.slice(0, 20);
+      // Recent forms (show all fetched, up to API limit)
+      const recent = allForms;
 
-      setStats({ total: allForms.length, byStatus, recent, pending, revisions, myForms: mine });
+      setStats({ total: totalCount, byStatus, recent, pending, revisions, myForms: mine });
       setMyForms(mine);
     } catch (e) {
       console.error('Dashboard error:', e);

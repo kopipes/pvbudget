@@ -13,6 +13,11 @@ export default function DivisionManagement({ token, onClose }) {
     const [newDesc, setNewDesc] = useState('');
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [confirmConfig, setConfirmConfig] = useState(null);
+
+    const showConfirm = (message) => new Promise(resolve => {
+        setConfirmConfig({ message, onConfirm: () => { setConfirmConfig(null); resolve(true); }, onCancel: () => { setConfirmConfig(null); resolve(false); } });
+    });
 
     const headers = {
         'Content-Type': 'application/json',
@@ -60,7 +65,8 @@ export default function DivisionManagement({ token, onClose }) {
     };
 
     const handleDelete = async (id, name) => {
-        if (!confirm(`Delete division "${name}"? This cannot be undone.`)) return;
+        const confirmed = await showConfirm(`Delete division "${name}"? This cannot be undone.`);
+        if (!confirmed) return;
         setError(''); setSuccess('');
         try {
             const res = await fetch(`${API}/api/divisions/${id}`, { method: 'DELETE', headers });
@@ -154,6 +160,23 @@ export default function DivisionManagement({ token, onClose }) {
                     </table>
                 </div>
             </div>
+
+            {/* Confirm Dialog */}
+            {confirmConfig && (
+                <div className="modal-overlay" style={{ zIndex: 9999 }} onClick={confirmConfig.onCancel}>
+                    <div className="modal-content" style={{ maxWidth: '400px' }} onClick={e => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h2>Confirm</h2>
+                            <button onClick={confirmConfig.onCancel}><X size={24} /></button>
+                        </div>
+                        <div style={{ padding: '1rem 0' }}><p>{confirmConfig.message}</p></div>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem' }}>
+                            <button className="btn btn-secondary" onClick={confirmConfig.onCancel}>Cancel</button>
+                            <button className="btn btn-primary" onClick={confirmConfig.onConfirm}>OK</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
