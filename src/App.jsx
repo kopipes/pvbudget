@@ -28,7 +28,7 @@ const STATUS_LABELS = {
 
 const formatCurrency = (amount) => {
     if (amount === undefined || amount === null || isNaN(amount)) return '';
-    return amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    return Math.round(amount).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 };
 
 const parseCurrency = (str) => {
@@ -352,9 +352,10 @@ function App({ user, token, onLogout }) {
     const managementFee = subtotalBudget * (mgmtPct / 100);
     const totalInternal = subtotalInternal;
     const totalBudget = subtotalBudget + managementFee;
-    const ppn = totalBudget * TAX_RATES.PPN;
+    const pph23 = Math.round((totalBudget / 0.98) - totalBudget);
+    const ppn = Math.round(totalBudget * TAX_RATES.PPN);
     const grandTotalInternal = totalInternal;
-    const grandTotalBudget = totalBudget + ppn;
+    const grandTotalBudget = totalBudget + pph23 + ppn;
     const grandTotalRealisasi = subtotalRealisasi;
     const afterPpn = totalBudget;
     const pph = totalBudget * TAX_RATES.PPH;
@@ -1266,6 +1267,11 @@ function App({ user, token, onLogout }) {
                             <td colSpan="3" className="align-right">TOTAL</td>
                             <td>{formatCurrency(totalInternal)}</td>
                             <td>{formatCurrency(totalBudget)}</td>
+                            {activeTab === 'realisasi' && <td></td>}<td></td>
+                        </tr>
+                        <tr className="summary-row">
+                            <td colSpan="3" className="align-right">PPH 23</td>
+                            <td></td><td>{formatCurrency(pph23)}</td>
                             {activeTab === 'realisasi' && <td></td>}<td></td>
                         </tr>
                         <tr className="summary-row">
