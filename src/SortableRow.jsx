@@ -78,11 +78,13 @@ function SortableSubItem({
     
     // In PO tab: only PO Number is editable
     const isPOTab = activeTab === 'po';
-    // In REALISASI tab: only Realisasi column and NEW items (after threshold) are editable
+    // In REALISASI tab: only Realisasi column is editable; other columns are always locked
     const isRealisasiTab = activeTab === 'realisasi';
     const isNewItem = mainIndex >= threshold;
     const canEditInRealisasi = isNewItem;
     const canEditRealisasiColumn = isRealisasiTab;
+    // In realisasi tab, new items can only edit the realisasi column — all other fields locked
+    const effectiveCanEditAllFields = isRealisasiTab ? false : canEditAllFields;
     
     // Locked style for non-editable fields
     const lockedStyle = {
@@ -93,31 +95,31 @@ function SortableSubItem({
 
     return (
         <tr className="row-sub-item" ref={setNodeRef} style={rowStyle} data-sub-id={sub.id} data-parent-id={mainItemId}>
-            <td style={{ padding: '0 4px', cursor: (canEditAllFields || (isPOTab && isManagerOrCorporate)) ? 'grab' : 'default' }}>
-                {(canEditAllFields || (isPOTab && isManagerOrCorporate)) && (
+            <td style={{ padding: '0 4px', cursor: (effectiveCanEditAllFields || (isPOTab && isManagerOrCorporate)) ? 'grab' : 'default' }}>
+                {(effectiveCanEditAllFields || (isPOTab && isManagerOrCorporate)) && (
                     <span {...attributes} {...listeners} style={{ display: 'flex', alignItems: 'center', color: 'var(--text-muted)', paddingLeft: '2px' }}>
                         <GripVertical size={14} />
                     </span>
                 )}
             </td>
             <td>
-                <input type="text" className="cell-input" value={sub.name} onChange={(e) => updateSubItem(mainItemId, sub.id, 'name', e.target.value)} style={{ paddingLeft: '1rem', ...(!canEditAllFields ? lockedStyle : {}) }} disabled={!canEditAllFields} />
+                <input type="text" className="cell-input" value={sub.name} onChange={(e) => updateSubItem(mainItemId, sub.id, 'name', e.target.value)} style={{ paddingLeft: '1rem', ...(!effectiveCanEditAllFields ? lockedStyle : {}) }} disabled={!effectiveCanEditAllFields} />
             </td>
             <td>
-                <input type="number" className="cell-input align-center" value={sub.qty} onChange={(e) => updateSubItem(mainItemId, sub.id, 'qty', parseFloat(e.target.value) || 0)} style={!canEditAllFields ? lockedStyle : {}} disabled={!canEditAllFields} />
+                <input type="number" className="cell-input align-center" value={sub.qty} onChange={(e) => updateSubItem(mainItemId, sub.id, 'qty', parseFloat(e.target.value) || 0)} style={!effectiveCanEditAllFields ? lockedStyle : {}} disabled={!effectiveCanEditAllFields} />
             </td>
             <td>
-                <input type="number" className="cell-input align-center" value={sub.mdy} onChange={(e) => updateSubItem(mainItemId, sub.id, 'mdy', parseFloat(e.target.value) || 0)} style={!canEditAllFields ? lockedStyle : {}} disabled={!canEditAllFields} />
+                <input type="number" className="cell-input align-center" value={sub.mdy} onChange={(e) => updateSubItem(mainItemId, sub.id, 'mdy', parseFloat(e.target.value) || 0)} style={!effectiveCanEditAllFields ? lockedStyle : {}} disabled={!effectiveCanEditAllFields} />
             </td>
             <td>
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 0.5rem' }}>
-                    <input type="text" className="cell-input align-right" value={sub.internalRate === 0 ? '' : formatCurrency(sub.internalRate)} onChange={(e) => updateSubItem(mainItemId, sub.id, 'internalRate', parseCurrency(e.target.value))} style={{ width: '45%', ...(!canEditAllFields ? lockedStyle : {}) }} placeholder="Rate" disabled={!canEditAllFields} />
+                    <input type="text" className="cell-input align-right" value={sub.internalRate === 0 ? '' : formatCurrency(sub.internalRate)} onChange={(e) => updateSubItem(mainItemId, sub.id, 'internalRate', parseCurrency(e.target.value))} style={{ width: '45%', ...(!effectiveCanEditAllFields ? lockedStyle : {}) }} placeholder="Rate" disabled={!effectiveCanEditAllFields} />
                     <div className="cell-readonly align-right" style={{ width: '50%' }}>{formatCurrency(rowTotalInternal)}</div>
                 </div>
             </td>
             <td>
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 0.5rem' }}>
-                    <input type="text" className="cell-input align-right" value={sub.rate === 0 ? '' : formatCurrency(sub.rate)} onChange={(e) => updateSubItem(mainItemId, sub.id, 'rate', parseCurrency(e.target.value))} style={{ width: '45%', ...(!canEditAllFields ? lockedStyle : {}) }} placeholder="Rate" disabled={!canEditAllFields} />
+                    <input type="text" className="cell-input align-right" value={sub.rate === 0 ? '' : formatCurrency(sub.rate)} onChange={(e) => updateSubItem(mainItemId, sub.id, 'rate', parseCurrency(e.target.value))} style={{ width: '45%', ...(!effectiveCanEditAllFields ? lockedStyle : {}) }} placeholder="Rate" disabled={!effectiveCanEditAllFields} />
                     <div className="cell-readonly align-right" style={{ width: '50%', fontWeight: 600 }}>{formatCurrency(rowTotalBudget)}</div>
                 </div>
             </td>
@@ -137,7 +139,7 @@ function SortableSubItem({
                 </td>
             )}
             <td className="col-actions">
-                {(canEditAllFields || (isRealisasiTab && canEditInRealisasi)) && <button className="btn-icon" title="Remove Sub Item" onClick={() => removeSubItem(mainItemId, mainIndex, sub.id)}><Trash2 size={18} /></button>}
+                {(effectiveCanEditAllFields || (isRealisasiTab && canEditInRealisasi)) && <button className="btn-icon" title="Remove Sub Item" onClick={() => removeSubItem(mainItemId, mainIndex, sub.id)}><Trash2 size={18} /></button>}
             </td>
         </tr>
     );
