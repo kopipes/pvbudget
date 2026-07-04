@@ -63,7 +63,7 @@ export default function LoginPage({ onLogin }) {
                 )}
 
                 <div className="login-field">
-                    <label htmlFor="login-username">Username</label>
+                    <label htmlFor="login-username">Username or Email</label>
                     <input
                         id="login-username"
                         type="text"

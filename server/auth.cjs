@@ -162,7 +162,8 @@ function setupAuthRoutes(app) {
             return res.status(400).json({ error: 'Username and password are required' });
         }
 
-        db.get(`SELECT u.*, d.name as division_name FROM users u LEFT JOIN divisions d ON u.division_id = d.id WHERE u.username = ?`, [username], (err, user) => {
+        // Allow login with username or email
+        db.get(`SELECT u.*, d.name as division_name FROM users u LEFT JOIN divisions d ON u.division_id = d.id WHERE u.username = ? OR (u.email IS NOT NULL AND u.email != '' AND u.email = ?)`, [username, username], (err, user) => {
             if (err) {
                 return res.status(500).json({ error: err.message });
             }
@@ -225,7 +226,7 @@ function setupUserRoutes(app) {
     // List all users
     app.get('/api/users', authMiddleware, requireRole('admin'), (req, res) => {
         db.all(
-            `SELECT u.id, u.username, u.display_name, u.role, u.manager_id, u.division_id, u.created_at,
+            `SELECT u.id, u.username, u.email, u.display_name, u.role, u.manager_id, u.division_id, u.created_at,
               m.display_name as manager_name, d.name as division_name
        FROM users u
        LEFT JOIN users m ON u.manager_id = m.id
@@ -256,7 +257,7 @@ function setupUserRoutes(app) {
 
     // Create user
     app.post('/api/users', authMiddleware, requireRole('admin'), (req, res) => {
-        const { username, password, display_name, role, manager_id, division_id } = req.body;
+        const { username, password, display_name, role, manager_id, division_id, email } = req.body;
 
         if (!username || !password || !display_name || !role) {
             return res.status(400).json({ error: 'username, password, display_name, and role are required' });
@@ -269,8 +270,8 @@ function setupUserRoutes(app) {
         const hash = bcrypt.hashSync(password, 10);
 
         db.run(
-            `INSERT INTO users (username, password, display_name, role, manager_id, division_id) VALUES (?, ?, ?, ?, ?, ?)`,
-            [username, hash, display_name, role, manager_id || null, division_id || null],
+            `INSERT INTO users (username, password, display_name, role, manager_id, division_id, email) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [username, hash, display_name, role, manager_id || null, division_id || null, email || null],
             function (err) {
                 if (err) {
                     if (err.message.includes('UNIQUE')) {
@@ -303,7 +304,7 @@ function setupUserRoutes(app) {
     // Update user
     app.put('/api/users/:id', authMiddleware, requireRole('admin'), (req, res) => {
         const { id } = req.params;
-        const { username, password, display_name, role, manager_id, division_id } = req.body;
+        const { username, password, display_name, role, manager_id, division_id, email } = req.body;
 
         // Build dynamic update
         const fields = [];
@@ -331,6 +332,11 @@ function setupUserRoutes(app) {
         if (division_id !== undefined) {
             fields.push('division_id = ?');
             params.push(division_id);
+        }
+        // email can be explicitly set to null
+        if (email !== undefined) {
+            fields.push('email = ?');
+            params.push(email || null);
         }
 
         if (fields.length === 0) {

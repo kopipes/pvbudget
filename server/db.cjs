@@ -121,6 +121,7 @@ const db = new sqlite3.Database(dbPath, (err) => {
         db.run(`ALTER TABLE forms ADD COLUMN has_po INTEGER DEFAULT 0`, () => {});
         db.run(`ALTER TABLE forms ADD COLUMN management_fee_pct REAL DEFAULT 10`, () => {});
         db.run(`ALTER TABLE forms ADD COLUMN realiza_data TEXT`, () => {});
+        db.run(`ALTER TABLE users ADD COLUMN email TEXT`, () => {});
         db.run(`ALTER TABLE forms ADD COLUMN has_realisasi INTEGER DEFAULT 0`, () => {});
 
         // Seed default admin user if no users exist

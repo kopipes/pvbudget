@@ -60,7 +60,7 @@ export default function UserManagement({ token, onClose }) {
     useEffect(() => { fetchUsers(); fetchDivisions(); }, []);
 
     const resetForm = () => {
-        setForm({ username: '', password: '', display_name: '', role: 'user', manager_id: '', division_id: '', managedDivisions: [] });
+        setForm({ username: '', password: '', display_name: '', email: '', role: 'user', manager_id: '', division_id: '', managedDivisions: [] });
         setEditingUser(null);
         setShowForm(false);
         setError('');
@@ -121,6 +121,7 @@ export default function UserManagement({ token, onClose }) {
             username: user.username,
             password: '',
             display_name: user.display_name,
+            email: user.email || '',
             role: user.role,
             manager_id: user.manager_id || '',
             division_id: user.division_id || '',
@@ -209,6 +210,15 @@ export default function UserManagement({ token, onClose }) {
                                 />
                             </div>
                             <div className="um-field">
+                                <label>Email</label>
+                                <input
+                                    type="email"
+                                    value={form.email || ''}
+                                    onChange={e => setForm({ ...form, email: e.target.value })}
+                                    placeholder="email@example.com"
+                                />
+                            </div>
+                            <div className="um-field">
                                 <label>Role</label>
                                 <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
                                     <option value="user">User</option>
@@ -280,6 +290,7 @@ export default function UserManagement({ token, onClose }) {
                             <tr>
                                 <th>Name</th>
                                 <th>Username</th>
+                                <th>Email</th>
                                 <th>Role</th>
                                 <th>Division</th>
                                 <th>Manager</th>
@@ -291,6 +302,7 @@ export default function UserManagement({ token, onClose }) {
                                 <tr key={u.id}>
                                     <td className="um-name">{u.display_name}</td>
                                     <td className="um-username">{u.username}</td>
+                                    <td className="um-username">{u.email || '—'}</td>
                                     <td><span className={roleBadgeClass(u.role)}>{roleIcon(u.role)} {u.role}</span></td>
                                     <td className="um-manager">{u.division_name || '—'}</td>
                                     <td className="um-manager">{u.manager_name || '—'}</td>
@@ -307,7 +319,7 @@ export default function UserManagement({ token, onClose }) {
                                 </tr>
                             ))}
                             {users.length === 0 && (
-                                <tr><td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: '#64748B' }}>No users found</td></tr>
+                                <tr><td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: '#64748B' }}>No users found</td></tr>
                             )}
                         </tbody>
                     </table>
