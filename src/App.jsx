@@ -833,8 +833,9 @@ function App({ user, token, onLogout }) {
         const realizasiSubtotalRowIdx = activeTab === 'realisasi' ? wsData.length + 1 : -1;
         const mgmtFeeRowIdx = wsData.length + (activeTab === 'realisasi' ? 2 : 1);
         const totalRowIdx = wsData.length + (activeTab === 'realisasi' ? 3 : 2);
-        const ppnRowIdx = wsData.length + (activeTab === 'realisasi' ? 4 : 3);
-        const grandTotalRowIdx = wsData.length + (activeTab === 'realisasi' ? 5 : 4);
+        const pph23RowIdx = wsData.length + (activeTab === 'realisasi' ? 4 : 3);
+        const ppnRowIdx = wsData.length + (activeTab === 'realisasi' ? 5 : 4);
+        const grandTotalRowIdx = wsData.length + (activeTab === 'realisasi' ? 6 : 5);
 
         // Helper to get cell reference
         const cellRef = (row, col) => XLSX.utils.encode_cell({ r: row, c: col });
@@ -858,15 +859,20 @@ function App({ user, token, onLogout }) {
             { t: 'n', f: cellRef(subtotalRowIdx, 3), z: acctFormat },
             { t: 'n', f: `${cellRef(subtotalRowIdx, 4)}+${cellRef(mgmtFeeRowIdx, 4)}`, z: acctFormat }]);
 
+        // PPH 23 row - formula: (total / 0.98) - total
+        wsData.push(['PPH 23', '', '',
+            '',
+            { t: 'n', f: `${cellRef(totalRowIdx, 4)}/0.98-${cellRef(totalRowIdx, 4)}`, z: acctFormat }]);
+
         // PPN row - formula: total * 11%
         wsData.push(['PPN (11%)', '', '',
             '',
             { t: 'n', f: `${cellRef(totalRowIdx, 4)}*0.11`, z: acctFormat }]);
 
-        // Grand Total row - formula: total + PPN
+        // Grand Total row - formula: total + PPH23 + PPN
         wsData.push(['GRAND TOTAL', '', '',
             { t: 'n', f: cellRef(totalRowIdx, 3), z: acctFormat },
-            { t: 'n', f: `${cellRef(totalRowIdx, 4)}+${cellRef(ppnRowIdx, 4)}`, z: acctFormat }]);
+            { t: 'n', f: `${cellRef(totalRowIdx, 4)}+${cellRef(pph23RowIdx, 4)}+${cellRef(ppnRowIdx, 4)}`, z: acctFormat }]);
         if (activeTab === 'realisasi') {
             wsData[wsData.length - 1].push({ t: 'n', f: sumRange(5), z: acctFormat });
         }
@@ -882,6 +888,7 @@ function App({ user, token, onLogout }) {
         wsData.push(['', '', '', 'After PPH', { t: 'n', f: `${cellRef(metricsStartRow + 1, 4)}*0.98`, z: acctFormat }]);
         wsData.push(['', '', '', 'P/L (Budget)', { t: 'n', f: `${cellRef(metricsStartRow + 2, 4)}-${cellRef(grandTotalRowIdx, 3)}`, z: acctFormat }]);
         if (activeTab === 'realisasi') {
+            wsData.push(['', '', '', 'Internal Budget', { t: 'n', f: cellRef(grandTotalRowIdx, 3), z: acctFormat }]);
             wsData.push(['', '', '', 'Actual Budget (Realisasi)', { t: 'n', f: cellRef(grandTotalRowIdx, 5), z: acctFormat }]);
             wsData.push(['', '', '', 'P/L (Realisasi)', { t: 'n', f: `${cellRef(grandTotalRowIdx, 5)}-${cellRef(grandTotalRowIdx, 3)}`, z: acctFormat }]);
         }
