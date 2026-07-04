@@ -78,13 +78,14 @@ function SortableSubItem({
     
     // In PO tab: only PO Number is editable
     const isPOTab = activeTab === 'po';
-    // In REALISASI tab: only Realisasi column is editable; other columns are always locked
+    // In REALISASI tab: only Realisasi column and Description are editable for new items; other columns are always locked
     const isRealisasiTab = activeTab === 'realisasi';
     const isNewItem = mainIndex >= threshold;
     const canEditInRealisasi = isNewItem;
     const canEditRealisasiColumn = isRealisasiTab;
-    // In realisasi tab, new items can only edit the realisasi column — all other fields locked
+    // In realisasi tab, new items can only edit description and realisasi column — all other fields locked
     const effectiveCanEditAllFields = isRealisasiTab ? false : canEditAllFields;
+    const canEditDescription = isRealisasiTab ? (isNewItem || canEditAllFields) : canEditAllFields;
     
     // Locked style for non-editable fields
     const lockedStyle = {
@@ -103,7 +104,7 @@ function SortableSubItem({
                 )}
             </td>
             <td>
-                <input type="text" className="cell-input" value={sub.name} onChange={(e) => updateSubItem(mainItemId, sub.id, 'name', e.target.value)} style={{ paddingLeft: '1rem', ...(!effectiveCanEditAllFields ? lockedStyle : {}) }} disabled={!effectiveCanEditAllFields} />
+                <input type="text" className="cell-input" value={sub.name} onChange={(e) => updateSubItem(mainItemId, sub.id, 'name', e.target.value)} style={{ paddingLeft: '1rem', ...(!canEditDescription ? lockedStyle : {}) }} disabled={!canEditDescription} />
             </td>
             <td>
                 <input type="number" className="cell-input align-center" value={sub.qty} onChange={(e) => updateSubItem(mainItemId, sub.id, 'qty', parseFloat(e.target.value) || 0)} style={!effectiveCanEditAllFields ? lockedStyle : {}} disabled={!effectiveCanEditAllFields} />
