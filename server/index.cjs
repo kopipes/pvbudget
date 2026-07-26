@@ -2,6 +2,8 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
 const db = require('./db.cjs');
 const { authMiddleware, setupAuthRoutes, setupUserRoutes } = require('./auth.cjs');
 
@@ -17,6 +19,35 @@ setupAuthRoutes(app);
 
 // User management routes (admin only — auth checked inside)
 setupUserRoutes(app);
+
+// ─── Read-only integration export for 2ndbrain (keyed) ───────────────────────
+const INTEGRATION_KEY = (() => {
+    if (process.env.INTERNAL_API_KEY) return process.env.INTERNAL_API_KEY.trim();
+    try { return fs.readFileSync(path.join(__dirname, '..', '.integration_key'), 'utf8').trim(); } catch { return ''; }
+})();
+function safeEq(a, b) {
+    const x = Buffer.from(String(a)), y = Buffer.from(String(b));
+    return x.length === y.length && crypto.timingSafeEqual(x, y);
+}
+function requireIntegrationKey(req, res, next) {
+    if (!INTEGRATION_KEY) return res.status(503).json({ error: 'Integration disabled (no key configured)' });
+    const h = String(req.header('x-internal-api-key') || '').trim();
+    const b = String(req.header('authorization') || '').replace(/^Bearer\s+/i, '').trim();
+    if ((h && safeEq(h, INTEGRATION_KEY)) || (b && safeEq(b, INTEGRATION_KEY))) return next();
+    return res.status(401).json({ error: 'Unauthorized' });
+}
+const allAsync = (sql) => new Promise((resolve, reject) => db.all(sql, [], (e, rows) => (e ? reject(e) : resolve(rows))));
+app.get('/api/integration/export', requireIntegrationKey, async (req, res) => {
+    try {
+        const [divisions, users, forms, approval_history] = await Promise.all([
+            allAsync('SELECT * FROM divisions'),
+            allAsync('SELECT id, username, display_name, role, division_id, manager_id, created_at FROM users'), // NO password
+            allAsync('SELECT * FROM forms'),
+            allAsync('SELECT * FROM approval_history'),
+        ]);
+        res.json({ app: 'pvbudget', exportDate: new Date().toISOString(), divisions, users, forms, approval_history });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // ===== PROTECTED FORM ROUTES =====
 // All form routes require authentication
