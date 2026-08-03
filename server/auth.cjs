@@ -145,6 +145,43 @@ setInterval(cleanupExpiredSessions, 60 * 60 * 1000);
 
 // Setup auth routes on the given express app
 function setupAuthRoutes(app) {
+    // Public: list divisions (used by registration form)
+    app.get('/api/auth/divisions', (req, res) => {
+        db.all('SELECT id, name FROM divisions ORDER BY name ASC', [], (err, rows) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json(rows);
+        });
+    });
+
+    // Register (self-service, default role: user)
+    app.post('/api/auth/register', (req, res) => {
+        const { email, display_name, password, division_id } = req.body;
+
+        if (!email || !display_name || !password) {
+            return res.status(400).json({ error: 'Email, display name, and password are required' });
+        }
+        if (password.length < 6) {
+            return res.status(400).json({ error: 'Password must be at least 6 characters' });
+        }
+
+        // Email must be unique
+        db.get('SELECT id FROM users WHERE email = ? OR username = ?', [email, email], (err, existing) => {
+            if (err) return res.status(500).json({ error: err.message });
+            if (existing) return res.status(409).json({ error: 'An account with this email already exists' });
+
+            const hash = bcrypt.hashSync(password, 10);
+            const divId = division_id ? parseInt(division_id, 10) : null;
+            db.run(
+                `INSERT INTO users (username, password, display_name, role, email, division_id) VALUES (?, ?, ?, 'user', ?, ?)`,
+                [email, hash, display_name, email, divId],
+                function (err) {
+                    if (err) return res.status(500).json({ error: err.message });
+                    res.status(201).json({ message: 'Account created successfully' });
+                }
+            );
+        });
+    });
+
     // Login
     app.post('/api/auth/login', (req, res) => {
         const { username, password } = req.body;

@@ -1,14 +1,40 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const API = import.meta.env.VITE_API_URL || '';
 
 export default function LoginPage({ onLogin }) {
+    const [mode, setMode] = useState('login'); // 'login' | 'register'
+
+    // Login state
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
+
+    // Register state
+    const [regEmail, setRegEmail] = useState('');
+    const [regDisplayName, setRegDisplayName] = useState('');
+    const [regPassword, setRegPassword] = useState('');
+    const [regConfirm, setRegConfirm] = useState('');
+    const [regDivision, setRegDivision] = useState('');
+    const [divisions, setDivisions] = useState([]);
+
     const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
     const [loading, setLoading] = useState(false);
 
-    const handleSubmit = async (e) => {
+    useEffect(() => {
+        fetch(`${API}/api/auth/divisions`)
+            .then(r => r.json())
+            .then(data => Array.isArray(data) && setDivisions(data))
+            .catch(() => {});
+    }, []);
+
+    const switchMode = (m) => {
+        setMode(m);
+        setError('');
+        setSuccess('');
+    };
+
+    const handleLogin = async (e) => {
         e.preventDefault();
         setError('');
         setLoading(true);
@@ -28,10 +54,58 @@ export default function LoginPage({ onLogin }) {
                 return;
             }
 
-            // Store in localStorage
             localStorage.setItem('auth_token', data.token);
             localStorage.setItem('auth_user', JSON.stringify(data.user));
             onLogin(data.token, data.user);
+        } catch (err) {
+            setError('Cannot connect to server');
+            setLoading(false);
+        }
+    };
+
+    const handleRegister = async (e) => {
+        e.preventDefault();
+        setError('');
+        setSuccess('');
+
+        if (regPassword !== regConfirm) {
+            setError('Passwords do not match');
+            return;
+        }
+        if (regPassword.length < 6) {
+            setError('Password must be at least 6 characters');
+            return;
+        }
+
+        setLoading(true);
+
+        try {
+            const res = await fetch(`${API}/api/auth/register`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            email: regEmail,
+                            display_name: regDisplayName,
+                            password: regPassword,
+                            division_id: regDivision || null
+                        })
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                setError(data.error || 'Registration failed');
+                setLoading(false);
+                return;
+            }
+
+            setSuccess('Account created. You can now sign in.');
+            setRegEmail('');
+            setRegDisplayName('');
+            setRegPassword('');
+            setRegConfirm('');
+            setLoading(false);
+            setTimeout(() => switchMode('login'), 2000);
         } catch (err) {
             setError('Cannot connect to server');
             setLoading(false);
@@ -46,11 +120,13 @@ export default function LoginPage({ onLogin }) {
                 ))}
             </div>
 
-            <form className="login-card" onSubmit={handleSubmit}>
+            <form className="login-card" onSubmit={mode === 'login' ? handleLogin : handleRegister}>
                 <div className="login-logo">
                     <div className="login-logo-icon">B</div>
                     <h1 className="login-title">PVBudget</h1>
-                    <p className="login-subtitle">Sign in to your account</p>
+                    <p className="login-subtitle">
+                        {mode === 'login' ? 'Sign in to your account' : 'Create a new account'}
+                    </p>
                 </div>
 
                 {error && (
@@ -62,32 +138,115 @@ export default function LoginPage({ onLogin }) {
                     </div>
                 )}
 
-                <div className="login-field">
-                    <label htmlFor="login-username">Username or Email</label>
-                    <input
-                        id="login-username"
-                        type="text"
-                        value={username}
-                        onChange={(e) => setUsername(e.target.value)}
-                        placeholder="Enter your username"
-                        autoFocus
-                        autoComplete="username"
-                        required
-                    />
-                </div>
+                {success && (
+                    <div className="login-success">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <circle cx="12" cy="12" r="10" /><polyline points="9 12 11 14 15 10" />
+                        </svg>
+                        {success}
+                    </div>
+                )}
 
-                <div className="login-field">
-                    <label htmlFor="login-password">Password</label>
-                    <input
-                        id="login-password"
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="Enter your password"
-                        autoComplete="current-password"
-                        required
-                    />
-                </div>
+                {mode === 'login' ? (
+                    <>
+                        <div className="login-field">
+                            <label htmlFor="login-username">Username or Email</label>
+                            <input
+                                id="login-username"
+                                type="text"
+                                value={username}
+                                onChange={(e) => setUsername(e.target.value)}
+                                placeholder="Enter your username or email"
+                                autoFocus
+                                autoComplete="username"
+                                required
+                            />
+                        </div>
+
+                        <div className="login-field">
+                            <label htmlFor="login-password">Password</label>
+                            <input
+                                id="login-password"
+                                type="password"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                placeholder="Enter your password"
+                                autoComplete="current-password"
+                                required
+                            />
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <div className="login-field">
+                            <label htmlFor="reg-email">Email</label>
+                            <input
+                                id="reg-email"
+                                type="email"
+                                value={regEmail}
+                                onChange={(e) => setRegEmail(e.target.value)}
+                                placeholder="Enter your email"
+                                autoFocus
+                                autoComplete="email"
+                                required
+                            />
+                        </div>
+
+                        <div className="login-field">
+                            <label htmlFor="reg-display-name">Display Name</label>
+                            <input
+                                id="reg-display-name"
+                                type="text"
+                                value={regDisplayName}
+                                onChange={(e) => setRegDisplayName(e.target.value)}
+                                placeholder="Your full name"
+                                autoComplete="name"
+                                required
+                            />
+                        </div>
+
+                        <div className="login-field">
+                            <label htmlFor="reg-password">Password</label>
+                            <input
+                                id="reg-password"
+                                type="password"
+                                value={regPassword}
+                                onChange={(e) => setRegPassword(e.target.value)}
+                                placeholder="At least 6 characters"
+                                autoComplete="new-password"
+                                required
+                            />
+                        </div>
+
+                        <div className="login-field">
+                            <label htmlFor="reg-confirm">Confirm Password</label>
+                            <input
+                                id="reg-confirm"
+                                type="password"
+                                value={regConfirm}
+                                onChange={(e) => setRegConfirm(e.target.value)}
+                                placeholder="Repeat your password"
+                                autoComplete="new-password"
+                                required
+                            />
+                        </div>
+
+                        <div className="login-field">
+                            <label htmlFor="reg-division">Division</label>
+                            <select
+                                id="reg-division"
+                                value={regDivision}
+                                onChange={(e) => setRegDivision(e.target.value)}
+                                className="login-select"
+                            >
+                                <option value="">— Select a division —</option>
+                                {divisions.map(d => (
+                                    <option key={d.id} value={d.id}>{d.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </>
+                )}
 
                 <button
                     type="submit"
@@ -96,10 +255,30 @@ export default function LoginPage({ onLogin }) {
                 >
                     {loading ? (
                         <span className="login-spinner" />
-                    ) : (
+                    ) : mode === 'login' ? (
                         'Sign In'
+                    ) : (
+                        'Create Account'
                     )}
                 </button>
+
+                <div className="login-toggle">
+                    {mode === 'login' ? (
+                        <>
+                            Don&apos;t have an account?{' '}
+                            <button type="button" className="login-toggle-btn" onClick={() => switchMode('register')}>
+                                Sign Up
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            Already have an account?{' '}
+                            <button type="button" className="login-toggle-btn" onClick={() => switchMode('login')}>
+                                Sign In
+                            </button>
+                        </>
+                    )}
+                </div>
             </form>
         </div>
     );
