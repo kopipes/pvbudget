@@ -193,6 +193,16 @@ td.col-po {
   background-color: #EEF2F7;
 }
 
+/* Hide number input spinners for QTY and MDY */
+.cell-input[type="number"]::-webkit-inner-spin-button,
+.cell-input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.cell-input[type="number"] {
+  -moz-appearance: textfield;
+}
+
 .row-sub-item:hover,
 .row-main-item:hover {
   background-color: var(--bg-color);
