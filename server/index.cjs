@@ -63,18 +63,38 @@ const STATUS = {
 
 // ---- Check if user can edit a form ----
 // Returns true = readonly, false = editable
+// Rules:
+//   admin     → always editable
+//   corporate → always readonly
+//   manager   → editable if they are the owner OR the form is in their division
+//   user      → editable only if they are the owner
 function canEditForm(user, form, callback) {
     const role = user.role?.toLowerCase();
     if (role === 'admin') return callback(null, false); // admin never readonly
     if (role === 'corporate') return callback(null, true); // corporate always readonly
-    // Owner is editable; non-owners are readonly
+    if (role === 'manager') {
+        // Manager can edit own forms or any form in their division
+        if (String(form.created_by) === String(user.id)) return callback(null, false);
+        const divId = form.division_id || null;
+        if (!divId) return callback(null, true); // no division set → readonly for manager
+        db.get(
+            'SELECT 1 FROM manager_divisions WHERE manager_id = ? AND division_id = ?',
+            [user.id, divId],
+            (err, row) => {
+                if (err) return callback(err, true);
+                return callback(null, !row); // editable if manager of this division
+            }
+        );
+        return;
+    }
+    // user role: editable only if owner
     return callback(null, String(form.created_by) !== String(user.id));
 }
 
 // ---- Visibility: what forms can this user see? ----
 // Corporate/Admin: all forms
-// Manager: own + subordinates' forms + approved from all
-// User: own forms only
+// Manager: own + subordinates' + division forms + approved from all
+// User: own forms + same-division forms (read-only) + globally approved forms
 function buildFormVisibility(user, extraField = '') {
     const sqlExtra = extraField ? `, ${extraField}` : '';
     let join = `LEFT JOIN users u ON f.created_by = u.id LEFT JOIN divisions div ON COALESCE(f.division_id, u.division_id) = div.id`;
@@ -87,8 +107,9 @@ function buildFormVisibility(user, extraField = '') {
         where = ` AND (f.created_by = ? OR u.manager_id = ? OR f.status = ? OR COALESCE(f.division_id, u.division_id) IN (SELECT division_id FROM manager_divisions WHERE manager_id = ?))`;
         params = [user.id, user.id, STATUS.APPROVED, user.id];
     } else {
-        where = ` AND (f.created_by = ? OR f.status = ?)`;
-        params = [user.id, STATUS.APPROVED];
+        // user: own forms + same-division forms + globally approved forms
+        where = ` AND (f.created_by = ? OR f.status = ? OR COALESCE(f.division_id, u.division_id) = (SELECT division_id FROM users WHERE id = ?))`;
+        params = [user.id, STATUS.APPROVED, user.id];
     }
 
     return {
@@ -377,27 +398,51 @@ app.put('/api/forms/:id', (req, res) => {
 });
 
 // 9. POST /api/forms/:id/submit (Submit for approval)
+// Only manager or admin can submit forms
 app.post('/api/forms/:id/submit', (req, res) => {
     const { id } = req.params;
+
+    if (req.user.role !== 'manager' && req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Only a Manager or Admin can submit forms for approval' });
+    }
 
     db.get('SELECT * FROM forms WHERE id = ?', [id], (err, form) => {
         if (err) return res.status(500).json({ error: err.message });
         if (!form) return res.status(404).json({ error: 'Form not found' });
-        if (String(form.created_by) !== String(req.user.id) && req.user.role !== 'admin') {
-            return res.status(403).json({ error: 'Access denied' });
-        }
-        if (form.status !== STATUS.DRAFT && form.status !== STATUS.REVISION) {
-            return res.status(400).json({ error: 'Only draft or revision forms can be submitted' });
+
+        // Manager must be the owner or manage the division this form belongs to
+        if (req.user.role === 'manager') {
+            const divId = form.division_id;
+            db.get(
+                `SELECT 1 FROM manager_divisions WHERE manager_id = ? AND division_id = ?`,
+                [req.user.id, divId],
+                (err, divRow) => {
+                    if (err) return res.status(500).json({ error: err.message });
+                    const isOwner = String(form.created_by) === String(req.user.id);
+                    const isDivManager = !!divRow;
+                    if (!isOwner && !isDivManager) {
+                        return res.status(403).json({ error: 'You can only submit forms you own or that belong to your division' });
+                    }
+                    doSubmit();
+                }
+            );
+        } else {
+            doSubmit();
         }
 
-        db.run(
-            `UPDATE forms SET status = ?, submitted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-            [STATUS.PENDING, id],
-            function (err) {
-                if (err) return res.status(500).json({ error: err.message });
-                res.json({ id, message: 'Form submitted for approval' });
+        function doSubmit() {
+            if (form.status !== STATUS.DRAFT && form.status !== STATUS.REVISION) {
+                return res.status(400).json({ error: 'Only draft or revision forms can be submitted' });
             }
-        );
+            db.run(
+                `UPDATE forms SET status = ?, submitted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+                [STATUS.PENDING, id],
+                function (err) {
+                    if (err) return res.status(500).json({ error: err.message });
+                    res.json({ id, message: 'Form submitted for approval' });
+                }
+            );
+        }
     });
 });
 

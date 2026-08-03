@@ -100,7 +100,7 @@ function App({ user, token, onLogout }) {
     // PO Number: admin/manager can edit
     const canEditPONumber = isAdmin || isManager;
     const canEditRealisasi = isAdmin || (!isReadOnly && !isCorporate && (canEdit || (currentStatus === STATUS.APPROVED && activeTab === 'realisasi' && hasRealization && String(loadedForm?.created_by) === String(user.id))));
-    const canSubmit = [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus) && (currentStatus !== STATUS.REVISION || currentFormId);
+    const canSubmit = (isManager || isAdmin) && [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus) && (currentStatus !== STATUS.REVISION || currentFormId);
     const canApprove = isAdmin || isCorporate;
     const canDelete = isAdmin && [STATUS.DRAFT, STATUS.REVISION, 'archived'].includes(currentStatus);
 
