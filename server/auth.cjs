@@ -187,14 +187,6 @@ function setupAuthRoutes(app) {
         const { username, password } = req.body;
         const clientIp = req.ip || req.connection.remoteAddress || 'unknown';
 
-        // Check rate limit
-        if (isRateLimited(clientIp)) {
-            return res.status(429).json({ 
-                error: 'Too many login attempts. Please try again after 15 minutes.',
-                retryAfter: 900 // seconds
-            });
-        }
-
         if (!username || !password) {
             return res.status(400).json({ error: 'Username and password are required' });
         }
@@ -204,6 +196,17 @@ function setupAuthRoutes(app) {
             if (err) {
                 return res.status(500).json({ error: err.message });
             }
+
+            // Admin users are exempt from rate limiting
+            const isAdmin = user && user.role === 'admin';
+
+            if (!isAdmin && isRateLimited(clientIp)) {
+                return res.status(429).json({
+                    error: 'Too many login attempts. Please try again after 15 minutes.',
+                    retryAfter: 900
+                });
+            }
+
             if (!user) {
                 recordFailedAttempt(clientIp);
                 return res.status(401).json({ error: 'Invalid username or password' });
@@ -211,7 +214,7 @@ function setupAuthRoutes(app) {
 
             const valid = bcrypt.compareSync(password, user.password);
             if (!valid) {
-                recordFailedAttempt(clientIp);
+                if (!isAdmin) recordFailedAttempt(clientIp);
                 return res.status(401).json({ error: 'Invalid username or password' });
             }
 
