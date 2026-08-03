@@ -280,9 +280,17 @@ function App({ user, token, onLogout }) {
         setItems(items.map(item => item.id === mainId ? { ...item, name } : item)); 
     };
     const addSubItem = (mainId, mainIndex) => {
-        if (mainIndex < getThreshold()) return; // Can't add sub to original items
+        // Threshold check only applies on realisasi tab (prevents editing original locked items)
+        if (activeTab === 'realisasi' && !isRealizationForm && mainIndex < getThreshold()) return;
         setItems(items.map(item => {
             if (item.id === mainId) return { ...item, subs: [...item.subs, { id: generateId(), name: 'New Sub Item', qty: 1, mdy: 1, internalRate: 0, rate: 0, actualRate: 0, poNumber: '' }] };
+            return item;
+        }));
+    };
+    const addSubLabel = (mainId, mainIndex) => {
+        if (activeTab === 'realisasi' && !isRealizationForm && mainIndex < getThreshold()) return;
+        setItems(items.map(item => {
+            if (item.id === mainId) return { ...item, subs: [...item.subs, { id: generateId(), name: 'Label', type: 'label' }] };
             return item;
         }));
     };
@@ -806,6 +814,13 @@ function App({ user, token, onLogout }) {
             wsData.push(mainRow);
 
             main.subs.forEach(sub => {
+                // Label rows — just a title, no numeric data
+                if (sub.type === 'label') {
+                    const labelRow = [`  ${sub.name}`, '', '', '', ''];
+                    if (activeTab === 'realisasi') labelRow.push('');
+                    wsData.push(labelRow);
+                    return;
+                }
                 const rowIdx = wsData.length;
                 itemRowIndices.push(rowIdx);
                 const rowData = [`  ${sub.name}`, { t: 'n', v: sub.qty }, { t: 'n', v: sub.mdy },
@@ -1247,6 +1262,7 @@ function App({ user, token, onLogout }) {
                                     parseCurrency={parseCurrency}
                                     updateMainItemName={updateMainItemName}
                                     addSubItem={addSubItem}
+                                    addSubLabel={addSubLabel}
                                     removeMainItem={removeMainItem}
                                     updateSubItem={updateSubItem}
                                     removeSubItem={removeSubItem}

@@ -1,11 +1,11 @@
 import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { PlusCircle, Trash2, GripVertical } from 'lucide-react';
+import { PlusCircle, Trash2, GripVertical, Type } from 'lucide-react';
 
 function SortableRow({ 
     mainItem, mainIndex, threshold, activeTab,
     canAddItems, canEditAllFields, formatCurrency, parseCurrency,
-    updateMainItemName, addSubItem, removeMainItem, updateSubItem, removeSubItem,
+    updateMainItemName, addSubItem, addSubLabel, removeMainItem, updateSubItem, removeSubItem,
     canEditActualRate, isManagerOrCorporate
 }) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: mainItem.id });
@@ -32,14 +32,28 @@ function SortableRow({
                     {canEditAllFields && (
                         <>
                             <button className="btn-icon btn-add-sub" title="Add Sub Item" onClick={() => addSubItem(mainItem.id, mainIndex)}><PlusCircle size={18} /></button>
+                            <button className="btn-icon" title="Add Label" onClick={() => addSubLabel(mainItem.id, mainIndex)} style={{ color: 'var(--text-muted)' }}><Type size={16} /></button>
                             <button className="btn-icon" title="Remove Main Item" onClick={() => removeMainItem(mainItem.id, mainIndex)}><Trash2 size={18} /></button>
                         </>
                     )}
                 </td>
             </tr>
             {mainItem.subs.map((sub) => {
-                const rowTotalInternal = sub.qty * sub.mdy * sub.internalRate;
-                const rowTotalBudget = sub.qty * sub.mdy * sub.rate;
+                if (sub.type === 'label') {
+                    return (
+                        <SortableLabelItem
+                            key={sub.id}
+                            sub={sub}
+                            mainItemId={mainItem.id}
+                            mainIndex={mainIndex}
+                            canEditAllFields={canEditAllFields}
+                            activeTab={activeTab}
+                            updateSubItem={updateSubItem}
+                            removeSubItem={removeSubItem}
+                            threshold={threshold}
+                        />
+                    );
+                }
                 return (
                     <SortableSubItem 
                         key={sub.id} 
@@ -59,6 +73,55 @@ function SortableRow({
                 );
             })}
         </>
+    );
+}
+
+// Label row — just a title/divider inside a main item, no numeric fields
+function SortableLabelItem({ sub, mainItemId, mainIndex, canEditAllFields, activeTab, updateSubItem, removeSubItem, threshold }) {
+    const sortableId = `${mainItemId}_${sub.id}`;
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: sortableId });
+    const rowStyle = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
+    const colSpan = activeTab === 'realisasi' ? 5 : activeTab === 'po' ? 5 : 4;
+    const isNewItem = mainIndex >= threshold;
+    const canEdit = canEditAllFields || isNewItem;
+
+    return (
+        <tr className="row-sub-item row-label-item" ref={setNodeRef} style={rowStyle} data-sub-id={sub.id} data-parent-id={mainItemId}>
+            <td style={{ padding: '0 4px' }}>
+                {canEdit && (
+                    <span {...attributes} {...listeners} style={{ display: 'flex', alignItems: 'center', color: 'var(--text-muted)', paddingLeft: '2px', cursor: 'grab' }}>
+                        <GripVertical size={14} />
+                    </span>
+                )}
+            </td>
+            <td colSpan={colSpan + 1}>
+                <input
+                    type="text"
+                    className="cell-input"
+                    value={sub.name}
+                    onChange={(e) => updateSubItem(mainItemId, sub.id, 'name', e.target.value)}
+                    disabled={!canEdit}
+                    style={{
+                        fontWeight: 600,
+                        fontStyle: 'italic',
+                        color: 'var(--text-muted)',
+                        fontSize: '0.85rem',
+                        paddingLeft: '1rem',
+                        letterSpacing: '0.03em',
+                        ...(!canEdit ? { opacity: 0.5, cursor: 'not-allowed' } : {})
+                    }}
+                />
+            </td>
+            {activeTab === 'realisasi' && <td></td>}
+            {activeTab === 'po' && <td></td>}
+            <td className="col-actions">
+                {canEdit && (
+                    <button className="btn-icon" title="Remove Label" onClick={() => removeSubItem(mainItemId, mainIndex, sub.id)}>
+                        <Trash2 size={18} />
+                    </button>
+                )}
+            </td>
+        </tr>
     );
 }
 

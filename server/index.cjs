@@ -73,16 +73,34 @@ function canEditForm(user, form, callback) {
     if (role === 'admin') return callback(null, false); // admin never readonly
     if (role === 'corporate') return callback(null, true); // corporate always readonly
     if (role === 'manager') {
-        // Manager can edit own forms or any form in their division
+        // Manager can always edit their own forms
         if (String(form.created_by) === String(user.id)) return callback(null, false);
-        const divId = form.division_id || null;
-        if (!divId) return callback(null, true); // no division set → readonly for manager
+        // For non-owned forms: resolve effective division (form.division_id or creator's division_id)
         db.get(
-            'SELECT 1 FROM manager_divisions WHERE manager_id = ? AND division_id = ?',
-            [user.id, divId],
+            `SELECT COALESCE(f.division_id, u.division_id) as effective_div
+             FROM forms f LEFT JOIN users u ON f.created_by = u.id WHERE f.id = ?`,
+            [form.id],
             (err, row) => {
                 if (err) return callback(err, true);
-                return callback(null, !row); // editable if manager of this division
+                const effectiveDiv = row && row.effective_div;
+                if (!effectiveDiv) return callback(null, true); // no division → readonly
+
+                // Check manager_divisions first
+                db.get(
+                    'SELECT 1 FROM manager_divisions WHERE manager_id = ? AND division_id = ?',
+                    [user.id, effectiveDiv],
+                    (err, divRow) => {
+                        if (err) return callback(err, true);
+                        if (divRow) return callback(null, false); // editable via manager_divisions
+
+                        // Fallback: manager's own division_id on users table
+                        db.get('SELECT division_id FROM users WHERE id = ?', [user.id], (err, managerRow) => {
+                            if (err) return callback(err, true);
+                            const sameDiv = managerRow && String(managerRow.division_id) === String(effectiveDiv);
+                            return callback(null, !sameDiv);
+                        });
+                    }
+                );
             }
         );
         return;
@@ -104,8 +122,10 @@ function buildFormVisibility(user, extraField = '') {
     if (user.role === 'admin' || user.role === 'corporate') {
         where = '';
     } else if (user.role === 'manager') {
-        where = ` AND (f.created_by = ? OR u.manager_id = ? OR f.status = ? OR COALESCE(f.division_id, u.division_id) IN (SELECT division_id FROM manager_divisions WHERE manager_id = ?))`;
-        params = [user.id, user.id, STATUS.APPROVED, user.id];
+        // Manager sees: own forms + subordinates' forms + approved forms + division forms
+        // Division check covers both manager_divisions table and manager's own division_id
+        where = ` AND (f.created_by = ? OR u.manager_id = ? OR f.status = ? OR COALESCE(f.division_id, u.division_id) IN (SELECT division_id FROM manager_divisions WHERE manager_id = ?) OR COALESCE(f.division_id, u.division_id) = (SELECT division_id FROM users WHERE id = ?))`;
+        params = [user.id, user.id, STATUS.APPROVED, user.id, user.id];
     } else {
         // user: own forms + same-division forms + globally approved forms
         where = ` AND (f.created_by = ? OR f.status = ? OR COALESCE(f.division_id, u.division_id) = (SELECT division_id FROM users WHERE id = ?))`;
