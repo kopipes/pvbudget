@@ -281,7 +281,7 @@ function App({ user, token, onLogout }) {
     };
     const getThreshold = () => (activeTab === 'realisasi' && !isRealizationForm) ? baseItemCountRealisasi : baseItemCount;
     const updateMainItemName = (mainId, mainIndex, name) => { 
-        if (mainIndex < getThreshold()) return; // Can't edit original items in REALISASI
+        if (activeTab === 'realisasi' && !isRealizationForm && mainIndex < getThreshold()) return; // Can't edit original items in REALISASI
         setItems(items.map(item => item.id === mainId ? { ...item, name } : item)); 
     };
     const addSubItem = (mainId, mainIndex) => {
