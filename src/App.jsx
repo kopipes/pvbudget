@@ -360,7 +360,7 @@ function App({ user, token, onLogout }) {
 
     // --- Calculations ---
     let subtotalInternal = 0, subtotalBudget = 0, subtotalRealisasi = 0;
-    items.forEach(item => { item.subs.forEach(sub => { subtotalInternal += (sub.qty * sub.mdy * sub.internalRate); subtotalBudget += (sub.qty * sub.mdy * sub.rate); subtotalRealisasi += (sub.actualRate || 0); }); });
+    items.forEach(item => { item.subs.forEach(sub => { if (sub.type === 'label') return; subtotalInternal += (sub.qty * sub.mdy * sub.internalRate); subtotalBudget += (sub.qty * sub.mdy * sub.rate); subtotalRealisasi += (sub.actualRate || 0); }); });
     const mgmtPct = parseFloat(eventData.managementFeePercent) || 0;
     const managementFee = subtotalBudget * (mgmtPct / 100);
     const totalInternal = subtotalInternal;
