@@ -28,7 +28,8 @@ function SortableRow({
                 {activeTab === 'realisasi' && <td></td>}
                 {activeTab === 'realisasi' && <td></td>}
                 {activeTab === 'po' && <td style={{ background: 'rgba(16,185,129,0.05)', width: '120px' }}></td>}
-                <td className="col-actions" style={{ display: 'flex', gap: '4px' }}>
+                <td className="col-actions">
+                    <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
                     {canEditAllFields && (
                         <>
                             <button className="btn-icon btn-add-sub" title="Add Sub Item" onClick={() => addSubItem(mainItem.id, mainIndex)}><PlusCircle size={18} /></button>
@@ -38,6 +39,7 @@ function SortableRow({
                     {canAddItems && (
                         <button className="btn-icon" title="Remove Main Item" onClick={() => removeMainItem(mainItem.id, mainIndex)}><Trash2 size={18} /></button>
                     )}
+                    </div>
                 </td>
             </tr>
             {mainItem.subs.map((sub) => {
