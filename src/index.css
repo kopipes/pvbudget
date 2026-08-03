@@ -189,6 +189,10 @@ td.col-po {
   font-size: 0.95rem;
 }
 
+.row-label-item td {
+  background-color: #EEF2F7;
+}
+
 .row-sub-item:hover,
 .row-main-item:hover {
   background-color: var(--bg-color);
