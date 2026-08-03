@@ -412,18 +412,41 @@ app.post('/api/forms/:id/submit', (req, res) => {
 
         // Manager must be the owner or manage the division this form belongs to
         if (req.user.role === 'manager') {
-            const divId = form.division_id;
+            const isOwner = String(form.created_by) === String(req.user.id);
+            if (isOwner) return doSubmit();
+
+            // Resolve the effective division of the form (form.division_id or creator's division_id)
             db.get(
-                `SELECT 1 FROM manager_divisions WHERE manager_id = ? AND division_id = ?`,
-                [req.user.id, divId],
-                (err, divRow) => {
+                `SELECT COALESCE(f.division_id, u.division_id) as effective_div
+                 FROM forms f LEFT JOIN users u ON f.created_by = u.id WHERE f.id = ?`,
+                [id],
+                (err, row) => {
                     if (err) return res.status(500).json({ error: err.message });
-                    const isOwner = String(form.created_by) === String(req.user.id);
-                    const isDivManager = !!divRow;
-                    if (!isOwner && !isDivManager) {
-                        return res.status(403).json({ error: 'You can only submit forms you own or that belong to your division' });
-                    }
-                    doSubmit();
+                    const effectiveDiv = row && row.effective_div;
+                    if (!effectiveDiv) return res.status(403).json({ error: 'Form has no division assigned' });
+
+                    // Check manager_divisions first, then fall back to manager's own division_id
+                    db.get(
+                        `SELECT 1 FROM manager_divisions WHERE manager_id = ? AND division_id = ?`,
+                        [req.user.id, effectiveDiv],
+                        (err, divRow) => {
+                            if (err) return res.status(500).json({ error: err.message });
+                            if (divRow) return doSubmit();
+
+                            // Fallback: check manager's own division_id on users table
+                            db.get(
+                                `SELECT division_id FROM users WHERE id = ?`,
+                                [req.user.id],
+                                (err, managerRow) => {
+                                    if (err) return res.status(500).json({ error: err.message });
+                                    if (managerRow && String(managerRow.division_id) === String(effectiveDiv)) {
+                                        return doSubmit();
+                                    }
+                                    return res.status(403).json({ error: 'You can only submit forms you own or that belong to your division' });
+                                }
+                            );
+                        }
+                    );
                 }
             );
         } else {
