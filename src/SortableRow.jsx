@@ -33,8 +33,10 @@ function SortableRow({
                         <>
                             <button className="btn-icon btn-add-sub" title="Add Sub Item" onClick={() => addSubItem(mainItem.id, mainIndex)}><PlusCircle size={18} /></button>
                             <button className="btn-icon" title="Add Label" onClick={() => addSubLabel(mainItem.id, mainIndex)} style={{ color: 'var(--text-muted)' }}><Type size={16} /></button>
-                            <button className="btn-icon" title="Remove Main Item" onClick={() => removeMainItem(mainItem.id, mainIndex)}><Trash2 size={18} /></button>
                         </>
+                    )}
+                    {canAddItems && (
+                        <button className="btn-icon" title="Remove Main Item" onClick={() => removeMainItem(mainItem.id, mainIndex)}><Trash2 size={18} /></button>
                     )}
                 </td>
             </tr>

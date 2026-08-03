@@ -269,9 +269,14 @@ function App({ user, token, onLogout }) {
         if (!canAddItems) return; 
         setItems([...items, { id: generateId(), name: 'NEW ITEM', subs: [] }]);
     };
-    const removeMainItem = (mainId, mainIndex) => { 
+    const removeMainItem = async (mainId, mainIndex) => { 
         const threshold = (activeTab === 'realisasi' && !isRealizationForm) ? baseItemCountRealisasi : baseItemCount;
-        if (mainIndex < threshold) return; // Can't remove original items
+        if (activeTab === 'realisasi' && !isRealizationForm && mainIndex < threshold) return; // Can't remove original items in realisasi tab
+        const item = items.find(i => i.id === mainId);
+        if (item && item.subs && item.subs.length > 0) {
+            await showDialog('alert', 'Remove all sub items first before deleting this section.', 'Cannot Delete');
+            return;
+        }
         setItems(items.filter(item => item.id !== mainId));
     };
     const getThreshold = () => (activeTab === 'realisasi' && !isRealizationForm) ? baseItemCountRealisasi : baseItemCount;
@@ -295,7 +300,7 @@ function App({ user, token, onLogout }) {
         }));
     };
     const removeSubItem = (mainId, mainIndex, subId) => { 
-        if (mainIndex < getThreshold()) return; // Can't remove sub from original items
+        if (activeTab === 'realisasi' && !isRealizationForm && mainIndex < getThreshold()) return; // Can't remove sub from original items in realisasi tab
         setItems(items.map(item => item.id === mainId ? { ...item, subs: item.subs.filter(sub => sub.id !== subId) } : item)); 
     };
     const getEditThreshold = () => {
