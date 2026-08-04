@@ -1,6 +1,17 @@
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const db = require('./db.cjs');
+const { Resend } = require('resend');
+const dotenv = require('dotenv');
+const path = require('path');
+
+dotenv.config({ path: path.join(__dirname, '..', '.env.local') });
+dotenv.config({ path: path.join(__dirname, '..', '.env.development') });
+dotenv.config({ path: path.join(__dirname, '..', '.env.production') });
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+const FROM_EMAIL = process.env.RESEND_FROM || 'no-reply@provaliantgroup.com';
+const APP_URL = process.env.APP_URL || 'https://budget.provaliantgroup.com';
 
 // Session configuration
 const SESSION_EXPIRY_HOURS = 24;
@@ -258,6 +269,89 @@ function setupAuthRoutes(app) {
     // Get current user info
     app.get('/api/auth/me', authMiddleware, (req, res) => {
         res.json({ user: req.user });
+    });
+
+    // Forgot password — sends reset email
+    app.post('/api/auth/forgot-password', (req, res) => {
+        const { email } = req.body;
+        if (!email) return res.status(400).json({ error: 'Email is required' });
+
+        db.get(`SELECT * FROM users WHERE email = ? OR (username = ? AND email IS NULL)`, [email, email], (err, user) => {
+            if (err) return res.status(500).json({ error: err.message });
+            // Always return success to prevent email enumeration
+            if (!user || !user.email) return res.json({ message: 'If an account with that email exists, a reset link has been sent.' });
+
+            const token = crypto.randomBytes(32).toString('hex');
+            const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
+
+            // Invalidate existing tokens for this user
+            db.run(`DELETE FROM password_reset_tokens WHERE user_id = ?`, [user.id], (err) => {
+                if (err) return res.status(500).json({ error: err.message });
+
+                db.run(
+                    `INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES (?, ?, ?)`,
+                    [user.id, token, expiresAt],
+                    async (err) => {
+                        if (err) return res.status(500).json({ error: err.message });
+
+                        const resetLink = `${APP_URL}/reset-password?token=${token}`;
+
+                        try {
+                            await resend.emails.send({
+                                from: FROM_EMAIL,
+                                to: user.email,
+                                subject: 'Reset Password PVBudget',
+                                html: `
+                                    <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#f8fafc;border-radius:12px;">
+                                        <h2 style="color:#1e293b;margin-bottom:8px;">Reset Password</h2>
+                                        <p style="color:#475569;">Halo <strong>${user.display_name}</strong>,</p>
+                                        <p style="color:#475569;">Kami menerima permintaan reset password untuk akun PVBudget kamu.</p>
+                                        <a href="${resetLink}" style="display:inline-block;margin:24px 0;padding:12px 28px;background:#facc15;color:#000;font-weight:700;border-radius:8px;text-decoration:none;">Reset Password</a>
+                                        <p style="color:#94a3b8;font-size:13px;">Link ini berlaku selama 1 jam. Jika kamu tidak meminta reset password, abaikan email ini.</p>
+                                        <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;">
+                                        <p style="color:#94a3b8;font-size:12px;">PVBudget — ${APP_URL}</p>
+                                    </div>
+                                `
+                            });
+                        } catch (emailErr) {
+                            console.error('Failed to send reset email:', emailErr);
+                        }
+
+                        res.json({ message: 'If an account with that email exists, a reset link has been sent.' });
+                    }
+                );
+            });
+        });
+    });
+
+    // Reset password — validates token and sets new password
+    app.post('/api/auth/reset-password', (req, res) => {
+        const { token, password } = req.body;
+        if (!token || !password) return res.status(400).json({ error: 'Token and password are required' });
+        if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+
+        db.get(
+            `SELECT * FROM password_reset_tokens WHERE token = ? AND used = 0 AND expires_at > datetime('now')`,
+            [token],
+            (err, row) => {
+                if (err) return res.status(500).json({ error: err.message });
+                if (!row) return res.status(400).json({ error: 'Invalid or expired reset link. Please request a new one.' });
+
+                const hash = bcrypt.hashSync(password, 10);
+
+                db.run(`UPDATE users SET password = ? WHERE id = ?`, [hash, row.user_id], (err) => {
+                    if (err) return res.status(500).json({ error: err.message });
+
+                    // Mark token as used
+                    db.run(`UPDATE password_reset_tokens SET used = 1 WHERE id = ?`, [row.id]);
+
+                    // Invalidate all sessions for this user
+                    db.run(`DELETE FROM sessions WHERE user_id = ?`, [row.user_id]);
+
+                    res.json({ message: 'Password updated successfully. You can now log in.' });
+                });
+            }
+        );
     });
 }
 

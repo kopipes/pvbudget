@@ -124,6 +124,17 @@ const db = new sqlite3.Database(dbPath, (err) => {
         db.run(`ALTER TABLE users ADD COLUMN email TEXT`, () => {});
         db.run(`ALTER TABLE forms ADD COLUMN has_realisasi INTEGER DEFAULT 0`, () => {});
 
+        // Create password_reset_tokens table
+        db.run(`CREATE TABLE IF NOT EXISTS password_reset_tokens (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            token TEXT UNIQUE NOT NULL,
+            expires_at DATETIME NOT NULL,
+            used INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )`);
+
         // Seed default admin user if no users exist
         db.get('SELECT COUNT(*) as count FROM users', (err, row) => {
             if (err) {
