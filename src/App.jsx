@@ -960,6 +960,9 @@ function App({ user, token, onLogout }) {
         </span>;
     };
 
+    if (showUserMgmt) return <UserManagement token={token} onClose={() => setShowUserMgmt(false)} />;
+    if (showDivisionMgmt) return <DivisionManagement token={token} onClose={() => setShowDivisionMgmt(false)} />;
+
     return (
         <div className="app-container">
             {/* DASHBOARD VIEW */}
@@ -1444,12 +1447,6 @@ function App({ user, token, onLogout }) {
                     </div>
                 </div>
             )}
-
-            {/* USER MANAGEMENT MODAL */}
-            {showUserMgmt && <UserManagement token={token} onClose={() => setShowUserMgmt(false)} />}
-
-            {/* DIVISION MANAGEMENT MODAL */}
-            {showDivisionMgmt && <DivisionManagement token={token} onClose={() => setShowDivisionMgmt(false)} />}
             </>
             )}
         </div>
