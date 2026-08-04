@@ -133,6 +133,8 @@ export default function UserManagement({ token, onClose }) {
         setEditingUser(user);
         setShowForm(true);
         setError('');
+        // Scroll to top so the edit form is visible
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     const handleDelete = async (user) => {

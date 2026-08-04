@@ -81,6 +81,7 @@ function App({ user, token, onLogout }) {
     const [isReadOnly, setIsReadOnly] = useState(false);
     const [sourceBudget, setSourceBudget] = useState(null);
     const [hasRealization, setHasRealization] = useState(false);
+    const [includePph23, setIncludePph23] = useState(true);
     const [isRealizationForm, setIsRealizationForm] = useState(false);
     const [realizationFormId, setRealizationFormId] = useState(null);
     const [budgetMgmtFeePct, setBudgetMgmtFeePct] = useState(10);
@@ -365,7 +366,7 @@ function App({ user, token, onLogout }) {
     const managementFee = subtotalBudget * (mgmtPct / 100);
     const totalInternal = subtotalInternal;
     const totalBudget = subtotalBudget + managementFee;
-    const pph23 = Math.round((totalBudget / 0.98) - totalBudget);
+    const pph23 = includePph23 ? Math.round((totalBudget / 0.98) - totalBudget) : 0;
     const ppn = Math.round(totalBudget * TAX_RATES.PPN);
     const grandTotalInternal = totalInternal;
     const grandTotalBudget = totalBudget + pph23 + ppn;
@@ -405,6 +406,7 @@ function App({ user, token, onLogout }) {
         setHasPO(false);
         setPoNumber('');
         setBudgetMgmtFeePct(10);
+        setIncludePph23(true);
         setBaseItemCount(0);
         setBaseItemCountRealisasi(0);
         setActiveTab('budget');
@@ -488,7 +490,7 @@ function App({ user, token, onLogout }) {
                 project_no: eventData.projectNo, event: eventData.name, venue: eventData.venue,
                 periode: eventData.periode, periode_start: eventData.periodeStart, periode_end: eventData.periodeEnd,
                 management_fee_pct: eventData.managementFeePercent, note: eventData.note,
-                division_id: selectedDivisionId || null, data: items
+                division_id: selectedDivisionId || null, data: items, include_pph23: includePph23 ? 1 : 0
             };
             let url = `${API}/api/forms`;
             let method = 'POST';
@@ -626,6 +628,7 @@ function App({ user, token, onLogout }) {
                 setCurrentStatus(form.status);
                 setCurrentVersion(form.version_number || 1);
                 setIsReadOnly(form.readonly || false);
+                setIncludePph23(form.include_pph23 !== 0); // default true if null/undefined/1
                 setBaseItemCountRealisasi(0);
                 const mgmtFee = form.management_fee_pct != null ? form.management_fee_pct : 10;
                 setEventData({
@@ -853,9 +856,9 @@ function App({ user, token, onLogout }) {
         const realizasiSubtotalRowIdx = activeTab === 'realisasi' ? wsData.length + 1 : -1;
         const mgmtFeeRowIdx = wsData.length + (activeTab === 'realisasi' ? 2 : 1);
         const totalRowIdx = wsData.length + (activeTab === 'realisasi' ? 3 : 2);
-        const pph23RowIdx = wsData.length + (activeTab === 'realisasi' ? 4 : 3);
-        const ppnRowIdx = wsData.length + (activeTab === 'realisasi' ? 5 : 4);
-        const grandTotalRowIdx = wsData.length + (activeTab === 'realisasi' ? 6 : 5);
+        const pph23RowIdx = includePph23 ? wsData.length + (activeTab === 'realisasi' ? 4 : 3) : -1;
+        const ppnRowIdx = wsData.length + (activeTab === 'realisasi' ? (includePph23 ? 5 : 4) : (includePph23 ? 4 : 3));
+        const grandTotalRowIdx = wsData.length + (activeTab === 'realisasi' ? (includePph23 ? 6 : 5) : (includePph23 ? 5 : 4));
 
         // Helper to get cell reference
         const cellRef = (row, col) => XLSX.utils.encode_cell({ r: row, c: col });
@@ -863,12 +866,12 @@ function App({ user, token, onLogout }) {
         // Pre-computed values for seeding cell v (so xlsx shows numbers without needing Excel recalc)
         const _managementFee = subtotalBudget * (mgmtPct / 100);
         const _totalBudget = subtotalBudget + _managementFee;
-        const _pph23 = Math.round((_totalBudget / 0.98) - _totalBudget);
+        const _pph23 = includePph23 ? Math.round((_totalBudget / 0.98) - _totalBudget) : 0;
         const _ppn = Math.round(_totalBudget * 0.11);
         const _grandTotalBudget = _totalBudget + _pph23 + _ppn;
         const _afterPpn = _totalBudget;
         const _afterPph = _afterPpn * 0.98;
-        const _profitLoss = _afterPph - subtotalInternal;
+        const _profitLoss = includePph23 ? (_afterPph - subtotalInternal) : (_afterPpn - subtotalInternal);
 
         // Subtotal row - uses SUM formulas + pre-computed v
         wsData.push(['SUBTOTAL', '', '',
@@ -889,10 +892,12 @@ function App({ user, token, onLogout }) {
             { t: 'n', f: cellRef(subtotalRowIdx, 3), v: subtotalInternal, z: acctFormat },
             { t: 'n', f: `${cellRef(subtotalRowIdx, 4)}+${cellRef(mgmtFeeRowIdx, 4)}`, v: _totalBudget, z: acctFormat }]);
 
-        // PPH 23 row
-        wsData.push(['PPH 23', '', '',
-            '',
-            { t: 'n', f: `${cellRef(totalRowIdx, 4)}/0.98-${cellRef(totalRowIdx, 4)}`, v: _pph23, z: acctFormat }]);
+        // PPH 23 row (only if includePph23)
+        if (includePph23) {
+            wsData.push(['PPH 23', '', '',
+                '',
+                { t: 'n', f: `${cellRef(totalRowIdx, 4)}/0.98-${cellRef(totalRowIdx, 4)}`, v: _pph23, z: acctFormat }]);
+        }
 
         // PPN row
         wsData.push(['PPN (11%)', '', '',
@@ -900,9 +905,12 @@ function App({ user, token, onLogout }) {
             { t: 'n', f: `${cellRef(totalRowIdx, 4)}*0.11`, v: _ppn, z: acctFormat }]);
 
         // Grand Total row
+        const grandTotalFormula = includePph23
+            ? `${cellRef(totalRowIdx, 4)}+${cellRef(pph23RowIdx, 4)}+${cellRef(ppnRowIdx, 4)}`
+            : `${cellRef(totalRowIdx, 4)}+${cellRef(ppnRowIdx, 4)}`;
         wsData.push(['GRAND TOTAL', '', '',
             { t: 'n', f: cellRef(totalRowIdx, 3), v: subtotalInternal, z: acctFormat },
-            { t: 'n', f: `${cellRef(totalRowIdx, 4)}+${cellRef(pph23RowIdx, 4)}+${cellRef(ppnRowIdx, 4)}`, v: _grandTotalBudget, z: acctFormat }]);
+            { t: 'n', f: grandTotalFormula, v: _grandTotalBudget, z: acctFormat }]);
         if (activeTab === 'realisasi') {
             wsData[wsData.length - 1].push({ t: 'n', f: sumRange(5), v: subtotalRealisasi, z: acctFormat });
         }
@@ -911,8 +919,12 @@ function App({ user, token, onLogout }) {
         const metricsStartRow = wsData.length;
         wsData.push(['', '', '', 'Submitted Budget', { t: 'n', f: cellRef(grandTotalRowIdx, 4), v: _grandTotalBudget, z: acctFormat }]);
         wsData.push(['', '', '', 'After PPN', { t: 'n', f: cellRef(totalRowIdx, 4), v: _afterPpn, z: acctFormat }]);
-        wsData.push(['', '', '', 'After PPH', { t: 'n', f: `${cellRef(metricsStartRow + 1, 4)}*0.98`, v: _afterPph, z: acctFormat }]);
-        wsData.push(['', '', '', 'P/L (Budget)', { t: 'n', f: `${cellRef(metricsStartRow + 2, 4)}-${cellRef(grandTotalRowIdx, 3)}`, v: _profitLoss, z: acctFormat }]);
+        if (includePph23) {
+            wsData.push(['', '', '', 'After PPH', { t: 'n', f: `${cellRef(metricsStartRow + 1, 4)}*0.98`, v: _afterPph, z: acctFormat }]);
+            wsData.push(['', '', '', 'P/L (Budget)', { t: 'n', f: `${cellRef(metricsStartRow + 2, 4)}-${cellRef(grandTotalRowIdx, 3)}`, v: _profitLoss, z: acctFormat }]);
+        } else {
+            wsData.push(['', '', '', 'P/L (Budget)', { t: 'n', f: `${cellRef(metricsStartRow + 1, 4)}-${cellRef(grandTotalRowIdx, 3)}`, v: _profitLoss, z: acctFormat }]);
+        }
         if (activeTab === 'realisasi') {
             const _plRealisasi = subtotalRealisasi - subtotalInternal;
             wsData.push(['', '', '', 'Internal Budget', { t: 'n', f: cellRef(grandTotalRowIdx, 3), v: subtotalInternal, z: acctFormat }]);
@@ -1230,6 +1242,18 @@ function App({ user, token, onLogout }) {
                     <label>Management Fee (%)</label>
                     <input type="number" min="0" max="100" step="0.5" value={eventData.managementFeePercent} onChange={(e) => setEventData({ ...eventData, managementFeePercent: parseFloat(e.target.value) || 0 })} placeholder="10" disabled={!canEdit} style={{ maxWidth: '120px' }} />
                 </div>
+                <div className="input-group" style={{ justifyContent: 'center' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: canEdit ? 'pointer' : 'default', userSelect: 'none' }}>
+                        <input
+                            type="checkbox"
+                            checked={includePph23}
+                            onChange={e => canEdit && setIncludePph23(e.target.checked)}
+                            disabled={!canEdit}
+                            style={{ width: '16px', height: '16px', accentColor: 'var(--primary)' }}
+                        />
+                        <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>Include PPH 23</span>
+                    </label>
+                </div>
             </div>
 
             {/* DATA GRID */}
@@ -1307,12 +1331,20 @@ function App({ user, token, onLogout }) {
                             <td>{formatCurrency(totalBudget)}</td>
                             {activeTab === 'realisasi' && <td></td>}<td></td>
                         </tr>
+                        {includePph23 && (
                         <tr className="summary-row">
                             <td colSpan="3" className="align-right">PPH 23</td>
                             <td></td><td>{formatCurrency(pph23)}</td>
                             {activeTab === 'realisasi' && <td></td>}<td></td>
                         </tr>
-                        <tr className="summary-row">
+                        )}
+                        {!includePph23 && (
+                            <tr className="summary-row" style={{ opacity: 0.4 }}>
+                                <td colSpan="3" className="align-right" style={{ fontStyle: 'italic' }}>PPH 23 (excluded)</td>
+                                <td></td><td>—</td>
+                                {activeTab === 'realisasi' && <td></td>}<td></td>
+                            </tr>
+                        )}                        <tr className="summary-row">
                             <td colSpan="3" className="align-right">PPN (11%)</td>
                             <td></td><td>{formatCurrency(ppn)}</td>
                             {activeTab === 'realisasi' && <td></td>}<td></td>
@@ -1338,8 +1370,15 @@ function App({ user, token, onLogout }) {
                 <div className="metrics-section" style={{ marginTop: 0, flexBasis: '400px' }}>
                     <div className="metric-line"><span className="metric-label">Submitted Budget</span><span className="metric-value">{formatCurrency(grandTotalBudget)}</span></div>
                     <div className="metric-line"><span className="metric-label">After PPN (Budget)</span><span className="metric-value">{formatCurrency(afterPpn)}</span></div>
-                    <div className="metric-line"><span className="metric-label">After PPH (Budget)</span><span className="metric-value">{formatCurrency(afterPph)}</span></div>
-                    <div className="metric-line pl"><span className="metric-label">P/L (Budget)</span><span className="metric-value" style={{ color: profitLoss < 0 ? '#ef4444' : '#16a34a' }}>{formatCurrency(profitLoss)}</span></div>
+                    {includePph23 && (
+                        <>
+                            <div className="metric-line"><span className="metric-label">After PPH (Budget)</span><span className="metric-value">{formatCurrency(afterPph)}</span></div>
+                            <div className="metric-line pl"><span className="metric-label">P/L (Budget)</span><span className="metric-value" style={{ color: profitLoss < 0 ? '#ef4444' : '#16a34a' }}>{formatCurrency(profitLoss)}</span></div>
+                        </>
+                    )}
+                    {!includePph23 && (
+                        <div className="metric-line pl"><span className="metric-label">P/L (Budget)</span><span className="metric-value" style={{ color: (afterPpn - grandTotalInternal) < 0 ? '#ef4444' : '#16a34a' }}>{formatCurrency(afterPpn - grandTotalInternal)}</span></div>
+                    )}
                     {activeTab === 'realisasi' && (
                         <>
                             <div style={{ height: '1px', background: 'var(--border)', margin: '1rem 0' }}></div>

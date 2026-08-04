@@ -123,6 +123,7 @@ const db = new sqlite3.Database(dbPath, (err) => {
         db.run(`ALTER TABLE forms ADD COLUMN realiza_data TEXT`, () => {});
         db.run(`ALTER TABLE users ADD COLUMN email TEXT`, () => {});
         db.run(`ALTER TABLE forms ADD COLUMN has_realisasi INTEGER DEFAULT 0`, () => {});
+        db.run(`ALTER TABLE forms ADD COLUMN include_pph23 INTEGER DEFAULT 1`, () => {});
 
         // Create password_reset_tokens table
         db.run(`CREATE TABLE IF NOT EXISTS password_reset_tokens (
