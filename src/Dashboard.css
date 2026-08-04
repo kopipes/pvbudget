@@ -382,6 +382,19 @@
 .dash-table-row-archived td { background: rgba(148, 163, 184, 0.03); }
 
 /* Empty / Loading states */
+.dash-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 1rem 0;
+}
+
+.dash-page-info {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
 .dash-empty {
   display: flex;
   flex-direction: column;

@@ -47,6 +47,9 @@ function Dashboard({ user, token, onLogout, onOpenForm }) {
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const PAGE_SIZE = 20;
   const [showUserMgmt, setShowUserMgmt] = useState(false);
   const [showDivisionMgmt, setShowDivisionMgmt] = useState(false);
 
@@ -65,8 +68,9 @@ function Dashboard({ user, token, onLogout, onOpenForm }) {
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
+      const statusParam = filterStatus !== 'all' && filterStatus !== 'my' ? `&status=${filterStatus}` : '';
       const promises = [
-        fetch(`${API}/api/forms?query=${encodeURIComponent(searchTerm)}`, { headers }),
+        fetch(`${API}/api/forms?query=${encodeURIComponent(searchTerm)}&page=${page}&limit=${PAGE_SIZE}${statusParam}`, { headers }),
         fetch(`${API}/api/forms/my`, { headers }),
       ];
       if (canApprove) promises.push(fetch(`${API}/api/forms/pending`, { headers }));
@@ -78,20 +82,17 @@ function Dashboard({ user, token, onLogout, onOpenForm }) {
       const rawMine = myFormsResult.ok ? await myFormsResult.json() : [];
       const rawPending = (pendingResult && pendingResult.ok) ? await pendingResult.json() : [];
       
-      // Handle both array and {data:[]} response formats
       const allForms = Array.isArray(rawAll) ? rawAll : (rawAll.data || []);
       const mine = Array.isArray(rawMine) ? rawMine : (rawMine.data || []);
       const pending = Array.isArray(rawPending) ? rawPending : (rawPending.data || []);
 
-      // Build stats — use pagination.total for accurate total count
       const totalCount = rawAll.pagination ? rawAll.pagination.total : allForms.length;
+      setTotalPages(rawAll.pagination ? rawAll.pagination.totalPages : 1);
+
       const byStatus = {};
       allForms.forEach(f => { byStatus[f.status] = (byStatus[f.status] || 0) + 1; });
 
-      // Revision forms for current user
       const revisions = mine.filter(f => f.status === STATUS.revision);
-
-      // Recent forms (show all fetched, up to API limit)
       const recent = allForms;
 
       setStats({ total: totalCount, byStatus, recent, pending, revisions, myForms: mine });
@@ -103,8 +104,12 @@ function Dashboard({ user, token, onLogout, onOpenForm }) {
   };
 
   useEffect(() => {
+    setPage(1);
+  }, [searchTerm, filterStatus]);
+
+  useEffect(() => {
     fetchDashboardData();
-  }, [searchTerm, user.role, token]);
+  }, [page, searchTerm, filterStatus, user.role, token]);
 
 
   const statsCards = [
@@ -297,6 +302,7 @@ function Dashboard({ user, token, onLogout, onOpenForm }) {
               {canCreate && <p style={{ fontSize: '0.85rem', color: '#94A3B8' }}>Start by creating a new form</p>}
             </div>
           ) : (
+            <>
             <div className="dash-table-wrap">
               <table className="dash-table">
                 <thead>
@@ -334,6 +340,14 @@ function Dashboard({ user, token, onLogout, onOpenForm }) {
                 </tbody>
               </table>
             </div>
+            {totalPages > 1 && filterStatus !== 'my' && (
+              <div className="dash-pagination">
+                <button className="btn btn-secondary btn-sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>← Prev</button>
+                <span className="dash-page-info">Page {page} of {totalPages}</span>
+                <button className="btn btn-secondary btn-sm" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>Next →</button>
+              </div>
+            )}
+            </>
           )}
         </div>
       </div>

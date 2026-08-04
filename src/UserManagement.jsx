@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { X, Plus, Trash2, Edit2, Save, Shield, Users, UserCheck } from 'lucide-react';
+import { X, Plus, Trash2, Edit2, Save, Shield, Users, UserCheck, Search } from 'lucide-react';
 
 const API = import.meta.env.VITE_API_URL || '';
+const PAGE_SIZE = 15;
 
 export default function UserManagement({ token, onClose }) {
     const [users, setUsers] = useState([]);
@@ -11,6 +12,8 @@ export default function UserManagement({ token, onClose }) {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [confirmConfig, setConfirmConfig] = useState(null);
+    const [search, setSearch] = useState('');
+    const [page, setPage] = useState(1);
 
     const showConfirm = (message) => new Promise(resolve => {
         setConfirmConfig({ message, onConfirm: () => { setConfirmConfig(null); resolve(true); }, onCancel: () => { setConfirmConfig(null); resolve(false); } });
@@ -166,6 +169,20 @@ export default function UserManagement({ token, onClose }) {
         return <Users size={14} />;
     };
 
+    const filteredUsers = users.filter(u => {
+        if (!search.trim()) return true;
+        const q = search.toLowerCase();
+        return (
+            (u.display_name || '').toLowerCase().includes(q) ||
+            (u.username || '').toLowerCase().includes(q) ||
+            (u.email || '').toLowerCase().includes(q) ||
+            (u.role || '').toLowerCase().includes(q) ||
+            (u.division_name || '').toLowerCase().includes(q)
+        );
+    });
+    const totalUserPages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
+    const pagedUsers = filteredUsers.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
     return (
         <div className="admin-page">
             <div className="admin-page-header">
@@ -286,7 +303,20 @@ export default function UserManagement({ token, onClose }) {
                     </button>
                 )}
 
-                {/* Users Table */}
+                {/* Search + Users Table */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', margin: '1rem 0 0.5rem' }}>
+                    <div className="dash-search-wrap" style={{ maxWidth: '320px' }}>
+                        <Search size={15} />
+                        <input
+                            type="text"
+                            placeholder="Search by name, email, username..."
+                            value={search}
+                            onChange={e => { setSearch(e.target.value); setPage(1); }}
+                            className="dash-search-input"
+                        />
+                    </div>
+                    <span style={{ fontSize: '0.8rem', color: '#64748b' }}>{filteredUsers.length} users</span>
+                </div>
                 <div className="um-table-wrap">
                     <table className="um-table">
                         <thead>
@@ -301,7 +331,7 @@ export default function UserManagement({ token, onClose }) {
                             </tr>
                         </thead>
                         <tbody>
-                            {users.map(u => (
+                            {pagedUsers.map(u => (
                                 <tr key={u.id}>
                                     <td className="um-name">{u.display_name}</td>
                                     <td className="um-username">{u.username}</td>
@@ -321,12 +351,19 @@ export default function UserManagement({ token, onClose }) {
                                     </td>
                                 </tr>
                             ))}
-                            {users.length === 0 && (
+                            {pagedUsers.length === 0 && (
                                 <tr><td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: '#64748B' }}>No users found</td></tr>
                             )}
                         </tbody>
                     </table>
                 </div>
+                {totalUserPages > 1 && (
+                    <div className="dash-pagination">
+                        <button className="btn btn-secondary btn-sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>← Prev</button>
+                        <span className="dash-page-info">Page {page} of {totalUserPages}</span>
+                        <button className="btn btn-secondary btn-sm" onClick={() => setPage(p => Math.min(totalUserPages, p + 1))} disabled={page === totalUserPages}>Next →</button>
+                    </div>
+                )}
             </div>
 
             {/* Confirm Dialog */}
