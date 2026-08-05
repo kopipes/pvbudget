@@ -82,6 +82,7 @@ function App({ user, token, onLogout }) {
     const [sourceBudget, setSourceBudget] = useState(null);
     const [hasRealization, setHasRealization] = useState(false);
     const [includePph23, setIncludePph23] = useState(true);
+    const [discountPct, setDiscountPct] = useState(0);
     const [isRealizationForm, setIsRealizationForm] = useState(false);
     const [realizationFormId, setRealizationFormId] = useState(null);
     const [budgetMgmtFeePct, setBudgetMgmtFeePct] = useState(10);
@@ -394,8 +395,10 @@ function App({ user, token, onLogout }) {
     let subtotalInternal = 0, subtotalBudget = 0, subtotalRealisasi = 0;
     items.forEach(item => { item.subs.forEach(sub => { if (sub.type === 'label') return; subtotalInternal += (sub.qty * sub.mdy * sub.internalRate); subtotalBudget += (sub.qty * sub.mdy * sub.rate); subtotalRealisasi += (sub.actualRate || 0); }); });
     const mgmtPct = parseFloat(eventData.managementFeePercent) || 0;
+    const discountAmt = discountPct > 0 ? subtotalInternal * (discountPct / 100) : 0;
+    const subtotalInternalAfterDiscount = subtotalInternal - discountAmt;
     const managementFee = subtotalBudget * (mgmtPct / 100);
-    const totalInternal = subtotalInternal;
+    const totalInternal = subtotalInternalAfterDiscount;
     const totalBudget = subtotalBudget + managementFee;
     const pph23 = includePph23 ? Math.round((totalBudget / 0.98) - totalBudget) : 0;
     const ppn = Math.round(totalBudget * TAX_RATES.PPN);
@@ -405,7 +408,7 @@ function App({ user, token, onLogout }) {
     const afterPpn = totalBudget;
     const pph = totalBudget * TAX_RATES.PPH;
     const afterPph = afterPpn - pph;
-    const profitLoss = afterPph - grandTotalInternal;
+    const profitLoss = includePph23 ? (afterPph - grandTotalInternal) : (afterPpn - grandTotalInternal);
     const profitLossRealisasi = grandTotalRealisasi - grandTotalInternal;
 
     // --- Form actions ---
@@ -438,6 +441,7 @@ function App({ user, token, onLogout }) {
         setPoNumber('');
         setBudgetMgmtFeePct(10);
         setIncludePph23(true);
+        setDiscountPct(0);
         setBaseItemCount(0);
         setBaseItemCountRealisasi(0);
         setActiveTab('budget');
@@ -521,7 +525,7 @@ function App({ user, token, onLogout }) {
                 project_no: eventData.projectNo, event: eventData.name, venue: eventData.venue,
                 periode: eventData.periode, periode_start: eventData.periodeStart, periode_end: eventData.periodeEnd,
                 management_fee_pct: eventData.managementFeePercent, note: eventData.note,
-                division_id: selectedDivisionId || null, data: items, include_pph23: includePph23 ? 1 : 0
+                division_id: selectedDivisionId || null, data: items, include_pph23: includePph23 ? 1 : 0, discount_pct: discountPct || 0
             };
             let url = `${API}/api/forms`;
             let method = 'POST';
@@ -659,7 +663,8 @@ function App({ user, token, onLogout }) {
                 setCurrentStatus(form.status);
                 setCurrentVersion(form.version_number || 1);
                 setIsReadOnly(form.readonly || false);
-                setIncludePph23(form.include_pph23 !== 0); // default true if null/undefined/1
+                setIncludePph23(form.include_pph23 !== 0);
+                setDiscountPct(form.discount_pct || 0);
                 setBaseItemCountRealisasi(0);
                 const mgmtFee = form.management_fee_pct != null ? form.management_fee_pct : 10;
                 setEventData({
@@ -885,16 +890,19 @@ function App({ user, token, onLogout }) {
         // Track row indices for formulas
         const subtotalRowIdx = wsData.length;
         const realizasiSubtotalRowIdx = activeTab === 'realisasi' ? wsData.length + 1 : -1;
-        const mgmtFeeRowIdx = wsData.length + (activeTab === 'realisasi' ? 2 : 1);
-        const totalRowIdx = wsData.length + (activeTab === 'realisasi' ? 3 : 2);
-        const pph23RowIdx = includePph23 ? wsData.length + (activeTab === 'realisasi' ? 4 : 3) : -1;
-        const ppnRowIdx = wsData.length + (activeTab === 'realisasi' ? (includePph23 ? 5 : 4) : (includePph23 ? 4 : 3));
-        const grandTotalRowIdx = wsData.length + (activeTab === 'realisasi' ? (includePph23 ? 6 : 5) : (includePph23 ? 5 : 4));
+        const discountOffset = discountPct > 0 ? (activeTab === 'realisasi' ? 2 : 2) : 0; // discount row + subtotal after discount row
+        const mgmtFeeRowIdx = wsData.length + (activeTab === 'realisasi' ? 2 : 1) + discountOffset;
+        const totalRowIdx = wsData.length + (activeTab === 'realisasi' ? 3 : 2) + discountOffset;
+        const pph23RowIdx = includePph23 ? wsData.length + (activeTab === 'realisasi' ? 4 : 3) + discountOffset : -1;
+        const ppnRowIdx = wsData.length + (activeTab === 'realisasi' ? (includePph23 ? 5 : 4) : (includePph23 ? 4 : 3)) + discountOffset;
+        const grandTotalRowIdx = wsData.length + (activeTab === 'realisasi' ? (includePph23 ? 6 : 5) : (includePph23 ? 5 : 4)) + discountOffset;
 
         // Helper to get cell reference
         const cellRef = (row, col) => XLSX.utils.encode_cell({ r: row, c: col });
 
-        // Pre-computed values for seeding cell v (so xlsx shows numbers without needing Excel recalc)
+        // Pre-computed values for seeding cell v
+        const _discountAmt = discountPct > 0 ? subtotalInternal * (discountPct / 100) : 0;
+        const _subtotalInternalAfterDiscount = subtotalInternal - _discountAmt;
         const _managementFee = subtotalBudget * (mgmtPct / 100);
         const _totalBudget = subtotalBudget + _managementFee;
         const _pph23 = includePph23 ? Math.round((_totalBudget / 0.98) - _totalBudget) : 0;
@@ -902,9 +910,9 @@ function App({ user, token, onLogout }) {
         const _grandTotalBudget = _totalBudget + _pph23 + _ppn;
         const _afterPpn = _totalBudget;
         const _afterPph = _afterPpn * 0.98;
-        const _profitLoss = includePph23 ? (_afterPph - subtotalInternal) : (_afterPpn - subtotalInternal);
+        const _profitLoss = includePph23 ? (_afterPph - _subtotalInternalAfterDiscount) : (_afterPpn - _subtotalInternalAfterDiscount);
 
-        // Subtotal row - uses SUM formulas + pre-computed v
+        // Subtotal row
         wsData.push(['SUBTOTAL', '', '',
             { t: 'n', f: sumRange(3), v: subtotalInternal, z: acctFormat },
             { t: 'n', f: sumRange(4), v: subtotalBudget, z: acctFormat }]);
@@ -913,14 +921,24 @@ function App({ user, token, onLogout }) {
             { t: 'n', f: sumRange(4), v: subtotalBudget, z: acctFormat },
             { t: 'n', f: sumRange(5), v: subtotalRealisasi, z: acctFormat }]);
 
+        // Discount rows (only if discountPct > 0)
+        if (discountPct > 0) {
+            wsData.push([`DISCOUNT (${discountPct}%)`, '', '',
+                { t: 'n', f: `${cellRef(subtotalRowIdx, 3)}*${discountPct}/100*-1`, v: -_discountAmt, z: acctFormat }, '', ]);
+            wsData.push(['SUBTOTAL AFTER DISCOUNT', '', '',
+                { t: 'n', f: `${cellRef(subtotalRowIdx, 3)}+${cellRef(subtotalRowIdx + 1, 3)}`, v: _subtotalInternalAfterDiscount, z: acctFormat },
+                { t: 'n', f: sumRange(4), v: subtotalBudget, z: acctFormat }]);
+        }
+
         // Management Fee row
         wsData.push([`MANAGEMENT FEE (${mgmtPct}%)`, '', '',
             '',
             { t: 'n', f: `${cellRef(subtotalRowIdx, 4)}*${mgmtPct}/100`, v: _managementFee, z: acctFormat }]);
 
-        // Total row
+        // Total row — internal uses discounted value
+        const internalRefForTotal = discountPct > 0 ? cellRef(subtotalRowIdx + 2, 3) : cellRef(subtotalRowIdx, 3);
         wsData.push(['TOTAL', '', '',
-            { t: 'n', f: cellRef(subtotalRowIdx, 3), v: subtotalInternal, z: acctFormat },
+            { t: 'n', f: internalRefForTotal, v: _subtotalInternalAfterDiscount, z: acctFormat },
             { t: 'n', f: `${cellRef(subtotalRowIdx, 4)}+${cellRef(mgmtFeeRowIdx, 4)}`, v: _totalBudget, z: acctFormat }]);
 
         // PPH 23 row (only if includePph23)
@@ -1292,6 +1310,10 @@ function App({ user, token, onLogout }) {
                     <label>Management Fee (%)</label>
                     <input type="number" min="0" max="100" step="0.5" value={eventData.managementFeePercent} onChange={(e) => setEventData({ ...eventData, managementFeePercent: parseFloat(e.target.value) || 0 })} placeholder="10" disabled={!canEdit} style={{ maxWidth: '120px' }} />
                 </div>
+                <div className="input-group">
+                    <label>Discount Internal (%)</label>
+                    <input type="number" min="0" max="100" step="0.1" value={discountPct} onChange={(e) => canEdit && setDiscountPct(parseFloat(e.target.value) || 0)} placeholder="0" disabled={!canEdit} style={{ maxWidth: '120px' }} />
+                </div>
                 <div className="input-group" style={{ justifyContent: 'center' }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: canEdit ? 'pointer' : 'default', userSelect: 'none' }}>
                         <input
@@ -1370,6 +1392,22 @@ function App({ user, token, onLogout }) {
                             {activeTab === 'realisasi' && <td></td>}
                             <td></td>
                         </tr>
+                        {discountPct > 0 && (
+                            <>
+                            <tr className="summary-row">
+                                <td colSpan="3" className="align-right" style={{ color: '#ef4444' }}>{`DISCOUNT (${discountPct}%)`}</td>
+                                <td style={{ color: '#ef4444' }}>-{formatCurrency(discountAmt)}</td>
+                                <td></td>
+                                {activeTab === 'realisasi' && <td></td>}<td></td>
+                            </tr>
+                            <tr className="summary-row highlight">
+                                <td colSpan="3" className="align-right">SUBTOTAL AFTER DISCOUNT</td>
+                                <td>{formatCurrency(subtotalInternalAfterDiscount)}</td>
+                                <td>{formatCurrency(subtotalBudget)}</td>
+                                {activeTab === 'realisasi' && <td></td>}<td></td>
+                            </tr>
+                            </>
+                        )}
                         <tr className="summary-row">
                             <td colSpan="3" className="align-right">{`MANAGEMENT FEE (${mgmtPct}%)`}</td>
                             <td></td><td>{formatCurrency(managementFee)}</td>

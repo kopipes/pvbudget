@@ -76,6 +76,23 @@ function SortableRow({
                     />
                 );
             })}
+            {/* Total per main item - informational only */}
+            {mainItem.subs.filter(s => s.type !== 'label').length > 0 && (
+                <tr className="summary-row" style={{ fontSize: '0.8rem', opacity: 0.75 }}>
+                    <td></td>
+                    <td style={{ paddingLeft: '1rem', fontStyle: 'italic', color: 'var(--text-muted)' }}>Total {mainItem.name}</td>
+                    <td></td><td></td>
+                    <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                        {formatCurrency(mainItem.subs.filter(s => s.type !== 'label').reduce((sum, s) => sum + (s.qty * s.mdy * s.internalRate), 0))}
+                    </td>
+                    <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                        {formatCurrency(mainItem.subs.filter(s => s.type !== 'label').reduce((sum, s) => sum + (s.qty * s.mdy * s.rate), 0))}
+                    </td>
+                    {activeTab === 'realisasi' && <td></td>}
+                    {(activeTab === 'po' || activeTab === 'realisasi') && <td></td>}
+                    <td></td>
+                </tr>
+            )}
         </>
     );
 }
