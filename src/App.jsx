@@ -105,6 +105,37 @@ function App({ user, token, onLogout }) {
     const canApprove = isAdmin || isCorporate;
     const canDelete = isAdmin && [STATUS.DRAFT, STATUS.REVISION, 'archived'].includes(currentStatus);
 
+    const [idleWarning, setIdleWarning] = useState(false);
+
+    useEffect(() => {
+        const IDLE_TIMEOUT = 30 * 60 * 1000;   // 30 minutes
+        const WARN_BEFORE  =  2 * 60 * 1000;   // warn 2 minutes before logout
+        let idleTimer = null;
+        let warnTimer = null;
+
+        const resetTimers = () => {
+            clearTimeout(idleTimer);
+            clearTimeout(warnTimer);
+            setIdleWarning(false);
+            warnTimer = setTimeout(() => setIdleWarning(true), IDLE_TIMEOUT - WARN_BEFORE);
+            idleTimer = setTimeout(() => {
+                localStorage.removeItem('auth_token');
+                localStorage.removeItem('auth_user');
+                onLogout();
+            }, IDLE_TIMEOUT);
+        };
+
+        const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'];
+        events.forEach(e => window.addEventListener(e, resetTimers, { passive: true }));
+        resetTimers();
+
+        return () => {
+            clearTimeout(idleTimer);
+            clearTimeout(warnTimer);
+            events.forEach(e => window.removeEventListener(e, resetTimers));
+        };
+    }, [onLogout]);
+
     useEffect(() => {
         fetchDivisions();
         if (isCorporate || isAdmin) fetchPendingApprovals();
@@ -982,6 +1013,25 @@ function App({ user, token, onLogout }) {
                 <Dashboard user={user} token={token} onLogout={onLogout} onOpenForm={(id) => { loadForm(id); }} />
             ) : (
             <>
+            {/* IDLE WARNING BANNER */}
+            {idleWarning && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999, background: '#b45309', color: '#fff', padding: '0.75rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.9rem', fontWeight: 500, boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
+                    <span><Clock size={16} style={{ display: 'inline', marginRight: '0.5rem', verticalAlign: 'middle' }} />Sesi Anda akan berakhir dalam 2 menit karena tidak ada aktivitas.</span>
+                    <div style={{ display: 'flex', gap: '0.75rem' }}>
+                        {canEdit && currentFormId && (
+                            <button className="btn btn-sm" style={{ background: '#fff', color: '#b45309', fontWeight: 700 }} onClick={async () => { await handleSaveForm(); setIdleWarning(false); }}>
+                                Save & Stay
+                            </button>
+                        )}
+                        <button className="btn btn-sm" style={{ background: 'rgba(255,255,255,0.2)', color: '#fff', border: '1px solid rgba(255,255,255,0.4)' }} onClick={() => { setIdleWarning(false); onLogout(); }}>
+                            Logout Sekarang
+                        </button>
+                        <button className="btn btn-sm" style={{ background: 'rgba(255,255,255,0.2)', color: '#fff', border: '1px solid rgba(255,255,255,0.4)' }} onClick={() => setIdleWarning(false)}>
+                            Tetap Login
+                        </button>
+                    </div>
+                </div>
+            )}
             {/* USER INFO BAR */}
             <div className="user-bar">
                 <div className="user-bar-info">
