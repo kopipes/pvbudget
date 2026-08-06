@@ -401,7 +401,7 @@ function App({ user, token, onLogout }) {
     const totalInternal = subtotalInternalAfterDiscount;
     const totalBudget = subtotalBudget + managementFee;
     const pph23 = includePph23 ? Math.round((totalBudget / 0.98) - totalBudget) : 0;
-    const ppn = Math.round(totalBudget * TAX_RATES.PPN);
+    const ppn = Math.round((totalBudget + pph23) * TAX_RATES.PPN);
     const grandTotalInternal = totalInternal;
     const grandTotalBudget = totalBudget + pph23 + ppn;
     const grandTotalRealisasi = subtotalRealisasi;
@@ -906,7 +906,7 @@ function App({ user, token, onLogout }) {
         const _managementFee = subtotalBudget * (mgmtPct / 100);
         const _totalBudget = subtotalBudget + _managementFee;
         const _pph23 = includePph23 ? Math.round((_totalBudget / 0.98) - _totalBudget) : 0;
-        const _ppn = Math.round(_totalBudget * 0.11);
+        const _ppn = Math.round((_totalBudget + _pph23) * 0.11);
         const _grandTotalBudget = _totalBudget + _pph23 + _ppn;
         const _afterPpn = _totalBudget;
         const _afterPph = _afterPpn * 0.98;
@@ -948,10 +948,13 @@ function App({ user, token, onLogout }) {
                 { t: 'n', f: `${cellRef(totalRowIdx, 4)}/0.98-${cellRef(totalRowIdx, 4)}`, v: _pph23, z: acctFormat }]);
         }
 
-        // PPN row
+        // PPN row — formula: (TOTAL + PPH23) * 11%
+        const ppnFormula = includePph23
+            ? `(${cellRef(totalRowIdx, 4)}+${cellRef(pph23RowIdx, 4)})*0.11`
+            : `${cellRef(totalRowIdx, 4)}*0.11`;
         wsData.push(['PPN (11%)', '', '',
             '',
-            { t: 'n', f: `${cellRef(totalRowIdx, 4)}*0.11`, v: _ppn, z: acctFormat }]);
+            { t: 'n', f: ppnFormula, v: _ppn, z: acctFormat }]);
 
         // Grand Total row
         const grandTotalFormula = includePph23
