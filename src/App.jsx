@@ -968,10 +968,10 @@ function App({ user, token, onLogout }) {
 
         wsData.push([]);
         const metricsStartRow = wsData.length;
-        wsData.push(['', '', '', 'Submitted Budget', { t: 'n', f: cellRef(grandTotalRowIdx, 4), v: _grandTotalBudget, z: acctFormat }]);
-        wsData.push(['', '', '', 'After PPN', { t: 'n', f: `${cellRef(metricsStartRow, 4)}/1.11`, v: _afterPpn, z: acctFormat }]);
+        wsData.push(['', '', '', 'Submitted to Client', { t: 'n', f: cellRef(grandTotalRowIdx, 4), v: _grandTotalBudget, z: acctFormat }]);
+        wsData.push(['', '', '', 'Net PPN (Budget)', { t: 'n', f: `${cellRef(metricsStartRow, 4)}/1.11`, v: _afterPpn, z: acctFormat }]);
         if (includePph23) {
-            wsData.push(['', '', '', 'After PPH', { t: 'n', f: `${cellRef(metricsStartRow + 1, 4)}*0.98`, v: _afterPph, z: acctFormat }]);
+            wsData.push(['', '', '', 'Net PPH (Budget)', { t: 'n', f: `${cellRef(metricsStartRow + 1, 4)}*0.98`, v: _afterPph, z: acctFormat }]);
             wsData.push(['', '', '', 'P/L (Budget)', { t: 'n', f: `${cellRef(metricsStartRow + 2, 4)}-${cellRef(grandTotalRowIdx, 3)}`, v: _profitLoss, z: acctFormat }]);
         } else {
             wsData.push(['', '', '', 'P/L (Budget)', { t: 'n', f: `${cellRef(metricsStartRow + 1, 4)}-${cellRef(grandTotalRowIdx, 3)}`, v: _profitLoss, z: acctFormat }]);
@@ -1458,11 +1458,11 @@ function App({ user, token, onLogout }) {
                     <textarea value={eventData.note} onChange={(e) => setEventData({ ...eventData, note: e.target.value })} placeholder="Add any additional notes or terms here..." disabled={!canEdit} style={{ width: '100%', minHeight: '150px', padding: '1rem', borderRadius: '12px', border: '1px solid var(--border)', background: !canEdit ? 'var(--bg-color)' : 'var(--surface)', fontFamily: 'inherit', fontSize: '0.95rem', resize: 'vertical', boxShadow: 'var(--shadow-sm)' }} />
                 </div>
                 <div className="metrics-section" style={{ marginTop: 0, flexBasis: '400px' }}>
-                    <div className="metric-line"><span className="metric-label">Submitted Budget</span><span className="metric-value">{formatCurrency(grandTotalBudget)}</span></div>
-                    <div className="metric-line"><span className="metric-label">After PPN (Budget)</span><span className="metric-value">{formatCurrency(afterPpn)}</span></div>
+                    <div className="metric-line"><span className="metric-label">Submitted to Client</span><span className="metric-value">{formatCurrency(grandTotalBudget)}</span></div>
+                    <div className="metric-line"><span className="metric-label">Net PPN (Budget)</span><span className="metric-value">{formatCurrency(afterPpn)}</span></div>
                     {includePph23 && (
                         <>
-                            <div className="metric-line"><span className="metric-label">After PPH (Budget)</span><span className="metric-value">{formatCurrency(afterPph)}</span></div>
+                            <div className="metric-line"><span className="metric-label">Net PPH (Budget)</span><span className="metric-value">{formatCurrency(afterPph)}</span></div>
                             <div className="metric-line pl"><span className="metric-label">P/L (Budget)</span><span className="metric-value" style={{ color: profitLoss < 0 ? '#ef4444' : '#16a34a' }}>{formatCurrency(profitLoss)}</span></div>
                         </>
                     )}
