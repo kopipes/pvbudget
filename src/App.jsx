@@ -405,9 +405,8 @@ function App({ user, token, onLogout }) {
     const grandTotalInternal = totalInternal;
     const grandTotalBudget = totalBudget + pph23 + ppn;
     const grandTotalRealisasi = subtotalRealisasi;
-    const afterPpn = totalBudget;
-    const pph = totalBudget * TAX_RATES.PPH;
-    const afterPph = afterPpn - pph;
+    const afterPpn = grandTotalBudget / 1.11;
+    const afterPph = afterPpn * 0.98;
     const profitLoss = includePph23 ? (afterPph - grandTotalInternal) : (afterPpn - grandTotalInternal);
     const profitLossRealisasi = grandTotalRealisasi - grandTotalInternal;
 
@@ -908,7 +907,7 @@ function App({ user, token, onLogout }) {
         const _pph23 = includePph23 ? Math.round((_totalBudget / 0.98) - _totalBudget) : 0;
         const _ppn = Math.round((_totalBudget + _pph23) * 0.11);
         const _grandTotalBudget = _totalBudget + _pph23 + _ppn;
-        const _afterPpn = _totalBudget;
+        const _afterPpn = _grandTotalBudget / 1.11;
         const _afterPph = _afterPpn * 0.98;
         const _profitLoss = includePph23 ? (_afterPph - _subtotalInternalAfterDiscount) : (_afterPpn - _subtotalInternalAfterDiscount);
 
@@ -970,7 +969,7 @@ function App({ user, token, onLogout }) {
         wsData.push([]);
         const metricsStartRow = wsData.length;
         wsData.push(['', '', '', 'Submitted Budget', { t: 'n', f: cellRef(grandTotalRowIdx, 4), v: _grandTotalBudget, z: acctFormat }]);
-        wsData.push(['', '', '', 'After PPN', { t: 'n', f: cellRef(totalRowIdx, 4), v: _afterPpn, z: acctFormat }]);
+        wsData.push(['', '', '', 'After PPN', { t: 'n', f: `${cellRef(metricsStartRow, 4)}/1.11`, v: _afterPpn, z: acctFormat }]);
         if (includePph23) {
             wsData.push(['', '', '', 'After PPH', { t: 'n', f: `${cellRef(metricsStartRow + 1, 4)}*0.98`, v: _afterPph, z: acctFormat }]);
             wsData.push(['', '', '', 'P/L (Budget)', { t: 'n', f: `${cellRef(metricsStartRow + 2, 4)}-${cellRef(grandTotalRowIdx, 3)}`, v: _profitLoss, z: acctFormat }]);
