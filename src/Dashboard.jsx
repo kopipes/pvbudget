@@ -47,6 +47,13 @@ function Dashboard({ user, token, onLogout, onOpenForm }) {
   const [stats, setStats] = useState({ total: 0, byStatus: {}, recent: [], pending: [], revisions: [], myForms: [] });
   const [myForms, setMyForms] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const PAGE_SIZE = 20;
+  const [showUserMgmt, setShowUserMgmt] = useState(false);
+  const [showDivisionMgmt, setShowDivisionMgmt] = useState(false);
   const [copyToast, setCopyToast] = useState(null);
 
   const handleShare = (formId) => {
@@ -55,7 +62,6 @@ function Dashboard({ user, token, onLogout, onOpenForm }) {
       setCopyToast(formId);
       setTimeout(() => setCopyToast(null), 2000);
     }).catch(() => {
-      // Fallback for older browsers
       const el = document.createElement('textarea');
       el.value = url;
       document.body.appendChild(el);
@@ -66,12 +72,6 @@ function Dashboard({ user, token, onLogout, onOpenForm }) {
       setTimeout(() => setCopyToast(null), 2000);
     });
   };
-  const [searchTerm, setSearchTerm] = useState('');
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const PAGE_SIZE = 20;
-  const [showUserMgmt, setShowUserMgmt] = useState(false);
-  const [showDivisionMgmt, setShowDivisionMgmt] = useState(false);
 
   const headers = {
     'Content-Type': 'application/json',
