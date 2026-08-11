@@ -310,7 +310,7 @@ app.get('/api/forms/:id', (req, res) => {
 
 // 7. POST /api/forms (Create new form as draft)
 app.post('/api/forms', (req, res) => {
-    const { form_type, project_no, event, venue, periode, periode_start, periode_end, management_fee_pct, data, note, division_id } = req.body;
+    const { form_type, project_no, event, venue, periode, periode_start, periode_end, management_fee_pct, data, note, division_id, include_pph23, discount_pct } = req.body;
 
     if (req.user.role === 'corporate') {
         return res.status(403).json({ error: 'Corporate users cannot create forms' });
@@ -328,12 +328,14 @@ app.post('/api/forms', (req, res) => {
         }
     }
 
-    const sql = `INSERT INTO forms (form_type, project_no, event, venue, periode, periode_start, periode_end, management_fee_pct, data, note, status, version_number, created_by, division_id)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,1, ?, ?)`;
+    const sql = `INSERT INTO forms (form_type, project_no, event, venue, periode, periode_start, periode_end, management_fee_pct, include_pph23, discount_pct, data, note, status, version_number, created_by, division_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,1, ?, ?)`;
     const params = [
         form_type || 'budget',
         project_no || '', event || '', venue || '', periode || '', periode_start || '', periode_end || '',
         management_fee_pct != null ? management_fee_pct : 10,
+        include_pph23 !== undefined ? (include_pph23 ? 1 : 0) : 1,
+        discount_pct != null ? discount_pct : 0,
         JSON.stringify(data || []), note || '',
         STATUS.DRAFT, req.user.id, division_id || req.user.division_id || null
     ];
@@ -347,7 +349,7 @@ app.post('/api/forms', (req, res) => {
 // 8. PUT /api/forms/:id (Update form — only draft/revision owner can edit)
 app.put('/api/forms/:id', (req, res) => {
     const { id } = req.params;
-    const { project_no, event, venue, periode, periode_start, periode_end, management_fee_pct, data, note, division_id, realiza_data } = req.body;
+    const { project_no, event, venue, periode, periode_start, periode_end, management_fee_pct, data, note, division_id, realiza_data, include_pph23, discount_pct } = req.body;
 
     // Validate management_fee_pct is a valid number
     if (management_fee_pct != null && (typeof management_fee_pct !== 'number' || management_fee_pct < 0 || management_fee_pct > 100)) {
@@ -400,10 +402,12 @@ app.put('/api/forms/:id', (req, res) => {
             return;
         }
 
-        const sql = `UPDATE forms SET project_no = ?, event = ?, venue = ?, periode = ?, periode_start = ?, periode_end = ?, management_fee_pct = ?, data = ?, note = ?, division_id = ?, realiza_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
+        const sql = `UPDATE forms SET project_no = ?, event = ?, venue = ?, periode = ?, periode_start = ?, periode_end = ?, management_fee_pct = ?, include_pph23 = ?, discount_pct = ?, data = ?, note = ?, division_id = ?, realiza_data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
         const params = [
             project_no || '', event || '', venue || '', periode || '', periode_start || '', periode_end || '',
             management_fee_pct != null ? management_fee_pct : 10,
+            include_pph23 !== undefined ? (include_pph23 ? 1 : 0) : 1,
+            discount_pct != null ? discount_pct : 0,
             JSON.stringify(data || []), note || '', division_id,
             // Preserve existing realiza_data if not explicitly provided
             realiza_data !== undefined ? JSON.stringify(realiza_data) : form.realiza_data || null,
