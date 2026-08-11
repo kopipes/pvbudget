@@ -13,6 +13,7 @@ import {
   Search
 } from 'lucide-react';
 import UserManagement from './UserManagement.jsx';
+import { apiFetch } from './utils/api.js';
 import DivisionManagement from './DivisionManagement.jsx';
 
 const API = import.meta.env.VITE_API_URL || '';
@@ -70,10 +71,10 @@ function Dashboard({ user, token, onLogout, onOpenForm }) {
     try {
       const statusParam = filterStatus !== 'all' && filterStatus !== 'my' ? `&status=${filterStatus}` : '';
       const promises = [
-        fetch(`${API}/api/forms?query=${encodeURIComponent(searchTerm)}&page=${page}&limit=${PAGE_SIZE}${statusParam}`, { headers }),
-        fetch(`${API}/api/forms/my`, { headers }),
+        apiFetch(`${API}/api/forms?query=${encodeURIComponent(searchTerm)}&page=${page}&limit=${PAGE_SIZE}${statusParam}`, { headers }),
+        apiFetch(`${API}/api/forms/my`, { headers }),
       ];
-      if (canApprove) promises.push(fetch(`${API}/api/forms/pending`, { headers }));
+      if (canApprove) promises.push(apiFetch(`${API}/api/forms/pending`, { headers }));
 
       const results = await Promise.all(promises.map(p => p.catch(() => ({ ok: false, json: async () => [] }))));
       const [allFormsResult, myFormsResult, pendingResult] = results;

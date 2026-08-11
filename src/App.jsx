@@ -8,6 +8,7 @@ import DivisionManagement from './DivisionManagement.jsx';
 import Dashboard from './Dashboard.jsx';
 import SortableRow from './SortableRow.jsx';
 import { TAX_RATES } from './config.js';
+import { apiFetch, setLogoutHandler } from './utils/api.js';
 import './App.css';
 
 const API = import.meta.env.VITE_API_URL || '';
@@ -108,6 +109,11 @@ function App({ user, token, onLogout }) {
 
     const [idleWarning, setIdleWarning] = useState(false);
 
+    // Register global 401 logout handler
+    useEffect(() => {
+        setLogoutHandler(onLogout);
+    }, [onLogout]);
+
     useEffect(() => {
         const IDLE_TIMEOUT = 30 * 60 * 1000;   // 30 minutes
         const WARN_BEFORE  =  2 * 60 * 1000;   // warn 2 minutes before logout
@@ -145,35 +151,35 @@ function App({ user, token, onLogout }) {
 
     const fetchDivisions = async () => {
         try {
-            const res = await fetch(`${API}/api/divisions`, { headers: authHeaders });
+            const res = await apiFetch(`${API}/api/divisions`, { headers: authHeaders });
             if (res.ok) setDivisions(await res.json());
         } catch (e) { console.error(e); }
     };
 
     const fetchPendingApprovals = async () => {
         try {
-            const res = await fetch(`${API}/api/forms/pending`, { headers: authHeaders });
+            const res = await apiFetch(`${API}/api/forms/pending`, { headers: authHeaders });
             if (res.ok) setPendingApprovals(await res.json());
         } catch (e) { console.error(e); }
     };
 
     const fetchMyForms = async () => {
         try {
-            const res = await fetch(`${API}/api/forms/my`, { headers: authHeaders });
+            const res = await apiFetch(`${API}/api/forms/my`, { headers: authHeaders });
             if (res.ok) setMyForms(await res.json());
         } catch (e) { console.error(e); }
     };
 
     const fetchVersionHistory = async (formId) => {
         try {
-            const res = await fetch(`${API}/api/forms/${formId}/history`, { headers: authHeaders });
+            const res = await apiFetch(`${API}/api/forms/${formId}/history`, { headers: authHeaders });
             if (res.ok) setVersionHistory(await res.json());
         } catch (e) { console.error(e); }
     };
 
     const fetchApprovalHistory = async (formId) => {
         try {
-            const res = await fetch(`${API}/api/forms/${formId}/approval-history`, { headers: authHeaders });
+            const res = await apiFetch(`${API}/api/forms/${formId}/approval-history`, { headers: authHeaders });
             if (res.ok) setApprovalHistory(await res.json());
         } catch (e) { console.error(e); }
     };
@@ -450,7 +456,7 @@ function App({ user, token, onLogout }) {
     const handleCreatePO = async () => {
         if (!currentFormId || currentStatus !== STATUS.APPROVED) return;
         try {
-            const res = await fetch(`${API}/api/forms/${currentFormId}/create-po`, { method: 'POST', headers: authHeaders });
+            const res = await apiFetch(`${API}/api/forms/${currentFormId}/create-po`, { method: 'POST', headers: authHeaders });
             const data = await res.json();
             if (!res.ok) {
                 await showDialog('alert', data.error || 'Failed to create PO', 'Error');
@@ -466,7 +472,7 @@ function App({ user, token, onLogout }) {
         if (!currentFormId) return;
         try {
             // Save main PO number via dedicated endpoint
-            const res = await fetch(`${API}/api/forms/${currentFormId}/po`, {
+            const res = await apiFetch(`${API}/api/forms/${currentFormId}/po`, {
                 method: 'PUT',
                 headers: authHeaders,
                 body: JSON.stringify({ po_number: poNumber, items })
@@ -486,7 +492,7 @@ function App({ user, token, onLogout }) {
     const handleCreateRealization = async () => {
         if (!currentFormId || currentStatus !== STATUS.APPROVED) return;
         try {
-            const res = await fetch(`${API}/api/forms/${currentFormId}/enable-realisasi`, { method: 'POST', headers: authHeaders });
+            const res = await apiFetch(`${API}/api/forms/${currentFormId}/enable-realisasi`, { method: 'POST', headers: authHeaders });
             const data = await res.json();
             if (!res.ok) { await showDialog('alert', data.error || 'Failed to enable realization', 'Error'); return; }
             // Update local state and switch tab
@@ -530,7 +536,7 @@ function App({ user, token, onLogout }) {
             let method = 'POST';
             if (currentFormId) { url = `${API}/api/forms/${currentFormId}`; method = 'PUT'; }
 
-            const response = await fetch(url, { method, headers: authHeaders, body: JSON.stringify(dataToSave) });
+            const response = await apiFetch(url, { method, headers: authHeaders, body: JSON.stringify(dataToSave) });
             if (response.status === 403) { await showDialog('alert', 'Only draft or revision forms can be edited', 'Access Denied'); return; }
             if (!response.ok) throw new Error('Save failed');
             const result = await response.json();
@@ -549,7 +555,7 @@ function App({ user, token, onLogout }) {
         if (!confirmed) return;
 
         try {
-            const res = await fetch(`${API}/api/forms/${currentFormId}/submit`, { method: 'POST', headers: authHeaders });
+            const res = await apiFetch(`${API}/api/forms/${currentFormId}/submit`, { method: 'POST', headers: authHeaders });
             const data = await res.json();
             if (!res.ok) { await showDialog('alert', data.error || 'Failed to submit', 'Error'); return; }
             setCurrentStatus(STATUS.PENDING);
@@ -561,12 +567,12 @@ function App({ user, token, onLogout }) {
         const note = await showDialog('prompt', 'Add approval note (optional):', 'Approve Form');
         if (note === null) return; // user cancelled
         try {
-            const res = await fetch(`${API}/api/forms/${currentFormId}/approve`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ note: note || '' }) });
+            const res = await apiFetch(`${API}/api/forms/${currentFormId}/approve`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ note: note || '' }) });
             const data = await res.json();
             if (!res.ok) { await showDialog('alert', data.error || 'Failed to approve', 'Error'); return; }
             fetchPendingApprovals();
             // Reload form to get updated approval_stage
-            const formRes = await fetch(`${API}/api/forms/${currentFormId}`, { headers: authHeaders });
+            const formRes = await apiFetch(`${API}/api/forms/${currentFormId}`, { headers: authHeaders });
             if (formRes.ok) {
                 const updatedForm = await formRes.json();
                 setLoadedForm(updatedForm);
@@ -581,7 +587,7 @@ function App({ user, token, onLogout }) {
         const note = await showDialog('prompt', 'Enter revision note (required):\n\nExplain what needs to be revised:', 'Send Back for Revision');
         if (!note || !note.trim()) { await showDialog('alert', 'Revision note is required to reject a form.', 'Required'); return; }
         try {
-            const res = await fetch(`${API}/api/forms/${currentFormId}/reject`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ note }) });
+            const res = await apiFetch(`${API}/api/forms/${currentFormId}/reject`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ note }) });
             const data = await res.json();
             if (!res.ok) { await showDialog('alert', data.error || 'Failed to reject', 'Error'); return; }
             // New revision form was created
@@ -597,7 +603,7 @@ function App({ user, token, onLogout }) {
         const confirmed = await showDialog('confirm', 'Unlock this approved form for revision? A new revision copy will be created.', 'Unlock Approved Form');
         if (!confirmed) return;
         try {
-            const res = await fetch(`${API}/api/forms/${currentFormId}/unlock`, { method: 'PUT', headers: authHeaders });
+            const res = await apiFetch(`${API}/api/forms/${currentFormId}/unlock`, { method: 'PUT', headers: authHeaders });
             const data = await res.json();
             if (!res.ok) { await showDialog('alert', data.error || 'Failed', 'Error'); return; }
             await showDialog('alert', 'New revision created. Loading the revision now.', 'Unlocked');
@@ -611,7 +617,7 @@ function App({ user, token, onLogout }) {
         const confirmed = await showDialog('confirm', 'Delete this form? This cannot be undone.', 'Delete Form');
         if (!confirmed) return;
         try {
-            const res = await fetch(`${API}/api/forms/${currentFormId}`, { method: 'DELETE', headers: authHeaders });
+            const res = await apiFetch(`${API}/api/forms/${currentFormId}`, { method: 'DELETE', headers: authHeaders });
             if (!res.ok) { const d = await res.json(); await showDialog('alert', d.error || 'Failed', 'Error'); return; }
             await showDialog('alert', 'Form deleted!', 'Deleted');
             resetFormState();
@@ -620,7 +626,7 @@ function App({ user, token, onLogout }) {
 
     const fetchForms = async (query = '', typeFilter = 'budget') => {
         try {
-            const res = await fetch(`${API}/api/forms?query=${encodeURIComponent(query)}&type=${typeFilter}`, { headers: authHeaders });
+            const res = await apiFetch(`${API}/api/forms?query=${encodeURIComponent(query)}&type=${typeFilter}`, { headers: authHeaders });
             if (res.status === 401) { onLogout(); return; }
             if (res.ok) {
                 const result = await res.json();
@@ -645,7 +651,7 @@ function App({ user, token, onLogout }) {
             return;
         }
         try {
-            const res = await fetch(`${API}/api/forms/${id}`, { headers: authHeaders });
+            const res = await apiFetch(`${API}/api/forms/${id}`, { headers: authHeaders });
             if (res.status === 401) { onLogout(); return; }
             if (res.ok) {
                 const form = await res.json();
@@ -696,7 +702,7 @@ function App({ user, token, onLogout }) {
                 } else {
                     // Check for existing realization form via source_budget_id (legacy)
                     try {
-                        const realCheck = await fetch(`${API}/api/forms?source_budget_id=${id}`, { headers: authHeaders });
+                        const realCheck = await apiFetch(`${API}/api/forms?source_budget_id=${id}`, { headers: authHeaders });
                         if (realCheck.ok) {
                             const result = await realCheck.json();
                             const realizations = Array.isArray(result) ? result : (result.data || []);
@@ -757,13 +763,13 @@ function App({ user, token, onLogout }) {
             } else {
                 // Fallback: load from linked realization form (legacy)
                 try {
-                    const realCheck = await fetch(`${API}/api/forms?source_budget_id=${currentFormId}`, { headers: authHeaders });
+                    const realCheck = await apiFetch(`${API}/api/forms?source_budget_id=${currentFormId}`, { headers: authHeaders });
                     if (realCheck.ok) {
                         const result = await realCheck.json();
                         const realizations = Array.isArray(result) ? result : (result.data || []);
                         if (realizations.length > 0) {
                             setRealizationFormId(realizations[0].id);
-                            const realizationRes = await fetch(`${API}/api/forms/${realizations[0].id}`, { headers: authHeaders });
+                            const realizationRes = await apiFetch(`${API}/api/forms/${realizations[0].id}`, { headers: authHeaders });
                             if (realizationRes.ok) {
                                 const realizationForm = await realizationRes.json();
                                 if (realizationForm.data && Array.isArray(realizationForm.data)) {
@@ -785,7 +791,7 @@ function App({ user, token, onLogout }) {
         } else if (tab === 'budget' || tab === 'po') {
             // Re-fetch form to get latest data (including PO numbers saved since last load)
             try {
-                const res = await fetch(`${API}/api/forms/${currentFormId}`, { headers: authHeaders });
+                const res = await apiFetch(`${API}/api/forms/${currentFormId}`, { headers: authHeaders });
                 if (res.ok) {
                     const freshForm = await res.json();
                     setLoadedForm(freshForm);
@@ -814,11 +820,11 @@ function App({ user, token, onLogout }) {
             if (realizationFormId) {
                 // Legacy: linked realization form
                 const dataToSave = { data: items };
-                response = await fetch(`${API}/api/forms/${realizationFormId}`, { method: 'PUT', headers: authHeaders, body: JSON.stringify(dataToSave) });
+                response = await apiFetch(`${API}/api/forms/${realizationFormId}`, { method: 'PUT', headers: authHeaders, body: JSON.stringify(dataToSave) });
             } else {
                 // Inline: only send realiza_data, server will preserve all other fields
                 const dataToSave = { realiza_data: items };
-                response = await fetch(`${API}/api/forms/${currentFormId}`, { method: 'PUT', headers: authHeaders, body: JSON.stringify(dataToSave) });
+                response = await apiFetch(`${API}/api/forms/${currentFormId}`, { method: 'PUT', headers: authHeaders, body: JSON.stringify(dataToSave) });
             }
             if (!response.ok) throw new Error('Save failed');
             setLoadedForm(prev => prev ? { ...prev, realiza_data: items } : null);
