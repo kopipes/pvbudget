@@ -1469,11 +1469,11 @@ function App({ user, token, onLogout }) {
                     {includePph23 && (
                         <>
                             <div className="metric-line"><span className="metric-label">Net PPH (Budget)</span><span className="metric-value">{formatCurrency(afterPph)}</span></div>
-                            <div className="metric-line pl"><span className="metric-label">P/L (Budget)</span><span className="metric-value" style={{ color: profitLoss < 0 ? '#ef4444' : '#16a34a' }}>{formatCurrency(profitLoss)}</span></div>
+                            <div className="metric-line pl"><span className="metric-label">P/L (Budget)</span><span className="metric-value" style={{ color: profitLoss < 0 ? '#ef4444' : '#16a34a' }}>{formatCurrency(profitLoss)}<span style={{ fontSize: '0.75rem', color: profitLoss < 0 ? '#ef4444' : '#16a34a', marginLeft: '0.4rem', opacity: 0.8 }}>({afterPph !== 0 ? (profitLoss / afterPph * 100).toFixed(1) : '0.0'}%)</span></span></div>
                         </>
                     )}
                     {!includePph23 && (
-                        <div className="metric-line pl"><span className="metric-label">P/L (Budget)</span><span className="metric-value" style={{ color: (afterPpn - grandTotalInternal) < 0 ? '#ef4444' : '#16a34a' }}>{formatCurrency(afterPpn - grandTotalInternal)}</span></div>
+                        <div className="metric-line pl"><span className="metric-label">P/L (Budget)</span><span className="metric-value" style={{ color: (afterPpn - grandTotalInternal) < 0 ? '#ef4444' : '#16a34a' }}>{formatCurrency(afterPpn - grandTotalInternal)}<span style={{ fontSize: '0.75rem', color: (afterPpn - grandTotalInternal) < 0 ? '#ef4444' : '#16a34a', marginLeft: '0.4rem', opacity: 0.8 }}>({afterPpn !== 0 ? ((afterPpn - grandTotalInternal) / afterPpn * 100).toFixed(1) : '0.0'}%)</span></span></div>
                     )}
                     {activeTab === 'realisasi' && (
                         <>
