@@ -40,7 +40,7 @@ const parseCurrency = (str) => {
     return isNaN(parsed) ? 0 : parsed;
 };
 
-function App({ user, token, onLogout }) {
+function App({ user, token, onLogout, initialFormId, onInitialFormLoaded }) {
     const [activeTab, setActiveTab] = useState('budget');
 
     const [eventData, setEventData] = useState({
@@ -113,6 +113,18 @@ function App({ user, token, onLogout }) {
     useEffect(() => {
         setLogoutHandler(onLogout);
     }, [onLogout]);
+
+    // Auto-load form from URL ?form=id param
+    useEffect(() => {
+        if (initialFormId) {
+            loadForm(initialFormId);
+            if (onInitialFormLoaded) onInitialFormLoaded();
+            // Clean up URL param without triggering a reload
+            const url = new URL(window.location.href);
+            url.searchParams.delete('form');
+            window.history.replaceState({}, '', url.pathname + url.search);
+        }
+    }, [initialFormId]);
 
     useEffect(() => {
         const IDLE_TIMEOUT = 30 * 60 * 1000;   // 30 minutes
@@ -692,6 +704,8 @@ function App({ user, token, onLogout }) {
                 setShowVersionHistory(false);
                 setShowDashboard(false);
                 setOpenedFormId(id);
+                // Push form ID to URL for sharing
+                window.history.pushState({}, '', `?form=${id}`);
 
                 // Check if this budget has realization enabled (has_realisasi flag)
                 const hasRealisasiFlag = form.has_realisasi === 1;
@@ -1069,7 +1083,7 @@ function App({ user, token, onLogout }) {
                     </div>
                 </div>
                 <div className="user-bar-actions">
-                    <button className="btn btn-secondary btn-sm" onClick={() => setShowDashboard(true)}>
+                    <button className="btn btn-secondary btn-sm" onClick={() => { setShowDashboard(true); window.history.pushState({}, '', window.location.pathname); }}>
                         <LayoutDashboard size={14} /> Dashboard
                     </button>
                     {(isAdmin || isCorporate) && pendingApprovals.length > 0 && (

@@ -6,9 +6,16 @@ import LoginPage from './LoginPage.jsx'
 
 const API = import.meta.env.VITE_API_URL || '';
 
+// Read ?form=<id> from URL on load
+function getInitialFormId() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('form') || null;
+}
+
 function Root() {
   const [token, setToken] = useState(null);
   const [user, setUser] = useState(null);
+  const [pendingFormId, setPendingFormId] = useState(getInitialFormId);
 
   // Restore session from localStorage on mount
   useEffect(() => {
@@ -47,7 +54,7 @@ function Root() {
     return <LoginPage onLogin={handleLogin} />;
   }
 
-  return <App user={user} token={token} onLogout={handleLogout} />;
+  return <App user={user} token={token} onLogout={handleLogout} initialFormId={pendingFormId} onInitialFormLoaded={() => setPendingFormId(null)} />;
 }
 
 createRoot(document.getElementById('root')).render(

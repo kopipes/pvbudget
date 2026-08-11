@@ -10,7 +10,8 @@ import {
   Archive,
   TrendingUp,
   Eye,
-  Search
+  Search,
+  Share2
 } from 'lucide-react';
 import UserManagement from './UserManagement.jsx';
 import { apiFetch } from './utils/api.js';
@@ -46,7 +47,25 @@ function Dashboard({ user, token, onLogout, onOpenForm }) {
   const [stats, setStats] = useState({ total: 0, byStatus: {}, recent: [], pending: [], revisions: [], myForms: [] });
   const [myForms, setMyForms] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filterStatus, setFilterStatus] = useState('all');
+  const [copyToast, setCopyToast] = useState(null);
+
+  const handleShare = (formId) => {
+    const url = `${window.location.origin}${window.location.pathname}?form=${formId}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopyToast(formId);
+      setTimeout(() => setCopyToast(null), 2000);
+    }).catch(() => {
+      // Fallback for older browsers
+      const el = document.createElement('textarea');
+      el.value = url;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
+      setCopyToast(formId);
+      setTimeout(() => setCopyToast(null), 2000);
+    });
+  };
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -334,6 +353,14 @@ function Dashboard({ user, token, onLogout, onOpenForm }) {
                       <td>
                         <button className="btn btn-sm btn-secondary" onClick={() => onOpenForm && onOpenForm(form.id)}>
                           <Eye size={14} /> Open
+                        </button>
+                        <button
+                          className="btn btn-sm btn-secondary"
+                          title="Copy share link"
+                          onClick={() => handleShare(form.id)}
+                          style={{ marginLeft: '0.25rem', minWidth: '32px', padding: '0.4rem 0.5rem' }}
+                        >
+                          {copyToast === form.id ? <CheckCircle size={14} style={{ color: '#16a34a' }} /> : <Share2 size={14} />}
                         </button>
                       </td>
                     </tr>
