@@ -1458,7 +1458,7 @@ function App({ user, token, onLogout }) {
             </div>
 
             {/* METRICS & NOTES FOOTER */}
-            <div style={{ display: 'flex', gap: '2rem', marginTop: '2rem' }}>
+            <div className="metrics-footer-wrap" style={{ display: 'flex', gap: '2rem', marginTop: '2rem' }}>
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                     <label style={{ fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', fontSize: '0.875rem' }}>Notes</label>
                     <textarea value={eventData.note} onChange={(e) => setEventData({ ...eventData, note: e.target.value })} placeholder="Add any additional notes or terms here..." disabled={!canEdit} style={{ width: '100%', minHeight: '150px', padding: '1rem', borderRadius: '12px', border: '1px solid var(--border)', background: !canEdit ? 'var(--bg-color)' : 'var(--surface)', fontFamily: 'inherit', fontSize: '0.95rem', resize: 'vertical', boxShadow: 'var(--shadow-sm)' }} />

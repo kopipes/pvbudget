@@ -416,6 +416,7 @@
 @media (max-width: 768px) {
   .dash-stats-row {
     grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
   }
   .dash-cards-grid {
     grid-template-columns: 1fr;
@@ -423,8 +424,49 @@
   .dash-filter-row {
     flex-direction: column;
     align-items: stretch;
+    gap: 0.5rem;
   }
   .dash-search-wrap {
     max-width: 100%;
+  }
+  .dash-nav {
+    padding: 0.75rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .dash-nav-right {
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+  .dash-nav-right .btn {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.75rem;
+  }
+  .dash-username {
+    display: none;
+  }
+  .dash-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .dash-table {
+    min-width: 600px;
+  }
+  /* Hide less important columns on mobile */
+  .dash-table th:nth-child(3),
+  .dash-table td:nth-child(3),
+  .dash-table th:nth-child(6),
+  .dash-table td:nth-child(6) {
+    display: none;
+  }
+  .dash-stat-card {
+    padding: 0.75rem;
+    gap: 0.5rem;
+  }
+  .dash-stat-number {
+    font-size: 1.5rem;
+  }
+  .dash-section-title {
+    font-size: 0.95rem;
   }
 }
