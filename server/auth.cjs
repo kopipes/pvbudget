@@ -7,7 +7,8 @@ const path = require('path');
 
 dotenv.config({ path: path.join(__dirname, '..', '.env.local') });
 dotenv.config({ path: path.join(__dirname, '..', '.env.development') });
-dotenv.config({ path: path.join(__dirname, '..', '.env.production') });
+// Production overrides development — use override:true so production values win
+dotenv.config({ path: path.join(__dirname, '..', '.env.production'), override: true });
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_EMAIL = process.env.RESEND_FROM || 'no-reply@provaliantgroup.com';
