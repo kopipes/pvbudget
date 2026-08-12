@@ -50,7 +50,10 @@ function Root() {
     setUser(null);
   };
 
-  if (!token || !user) {
+  // If there's a reset token in the URL, always show login page (reset form)
+  const hasResetToken = new URLSearchParams(window.location.search).has('token');
+
+  if (!token || !user || hasResetToken) {
     return <LoginPage onLogin={handleLogin} />;
   }
 
