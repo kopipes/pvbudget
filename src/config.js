@@ -25,14 +25,16 @@ export const ROLES = {
     ADMIN: 'admin',
     CORPORATE: 'corporate',
     MANAGER: 'manager',
-    USER: 'user'
+    USER: 'user',
+    PURCHASING: 'purchasing'
 };
 
 export const ROLE_LABELS = {
     [ROLES.ADMIN]: 'Admin',
     [ROLES.CORPORATE]: 'Corporate',
     [ROLES.MANAGER]: 'Manager',
-    [ROLES.USER]: 'User'
+    [ROLES.USER]: 'User',
+    [ROLES.PURCHASING]: 'Purchasing'
 };
 
 // Tax rates configuration

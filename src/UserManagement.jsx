@@ -167,6 +167,7 @@ export default function UserManagement({ token, onClose }) {
     const roleIcon = (role) => {
         if (role === 'admin') return <Shield size={14} />;
         if (role === 'corporate') return <Shield size={14} />;
+        if (role === 'purchasing') return <Shield size={14} />;
         if (role === 'manager') return <UserCheck size={14} />;
         return <Users size={14} />;
     };
@@ -246,6 +247,7 @@ export default function UserManagement({ token, onClose }) {
                                     <option value="user">User</option>
                                     <option value="manager">Manager</option>
                                     <option value="corporate">Corporate</option>
+                                <option value="purchasing">Purchasing</option>
                                     <option value="admin">Admin</option>
                                 </select>
                             </div>

@@ -71,7 +71,7 @@ const STATUS = {
 function canEditForm(user, form, callback) {
     const role = user.role?.toLowerCase();
     if (role === 'admin') return callback(null, false); // admin never readonly
-    if (role === 'corporate') return callback(null, true); // corporate always readonly
+    if (role === 'corporate' || role === 'purchasing') return callback(null, true); // always readonly
     if (role === 'manager') {
         // Manager can always edit their own forms
         if (String(form.created_by) === String(user.id)) return callback(null, false);
@@ -121,6 +121,10 @@ function buildFormVisibility(user, extraField = '') {
 
     if (user.role === 'admin' || user.role === 'corporate') {
         where = '';
+    } else if (user.role === 'purchasing') {
+        // Purchasing sees all approved forms across all divisions (read-only)
+        where = ` AND f.status = ?`;
+        params = [STATUS.APPROVED];
     } else if (user.role === 'manager') {
         // Manager sees: own forms + subordinates' forms + approved forms + division forms
         // Division check covers both manager_divisions table and manager's own division_id

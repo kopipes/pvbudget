@@ -97,12 +97,13 @@ function App({ user, token, onLogout, initialFormId, onInitialFormLoaded }) {
 
     const isAdmin = user.role === 'admin';
     const isCorporate = user.role === 'corporate';
+    const isPurchasing = user.role === 'purchasing';
     const isManager = user.role === 'manager';
     // Can edit: only on draft/revision status (admin included, except archived)
-    const canEdit = !isCorporate && !isReadOnly && [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus);
+    const canEdit = !isCorporate && !isPurchasing && !isReadOnly && [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus);
     // PO Number: admin/manager can edit
     const canEditPONumber = isAdmin || isManager;
-    const canEditRealisasi = isAdmin || (!isReadOnly && !isCorporate && (canEdit || (currentStatus === STATUS.APPROVED && activeTab === 'realisasi' && hasRealization && String(loadedForm?.created_by) === String(user.id))));
+    const canEditRealisasi = isAdmin || (!isReadOnly && !isCorporate && !isPurchasing && (canEdit || (currentStatus === STATUS.APPROVED && activeTab === 'realisasi' && hasRealization && String(loadedForm?.created_by) === String(user.id))));
     const canSubmit = (isManager || isAdmin) && [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus) && (currentStatus !== STATUS.REVISION || currentFormId);
     const canApprove = isAdmin || isCorporate;
     const canDelete = isAdmin && [STATUS.DRAFT, STATUS.REVISION, 'archived'].includes(currentStatus);
@@ -1021,7 +1022,7 @@ function App({ user, token, onLogout, initialFormId, onInitialFormLoaded }) {
     };
 
     const roleBadge = (role) => {
-        const labels = { admin: 'Admin', corporate: 'Corporate', manager: 'Manager', user: 'User' };
+        const labels = { admin: 'Admin', corporate: 'Corporate', manager: 'Manager', user: 'User', purchasing: 'Purchasing' };
         return <span className={`role-badge role-${role}`}>{labels[role] || role}</span>;
     };
 

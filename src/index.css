@@ -894,6 +894,12 @@ td.col-po {
   border: 1px solid rgba(168, 85, 247, 0.25);
 }
 
+.role-purchasing {
+  background: rgba(20, 184, 166, 0.12);
+  color: #0d9488;
+  border: 1px solid rgba(20, 184, 166, 0.25);
+}
+
 /* ========== READ-ONLY BANNER ========== */
 .readonly-banner {
   display: flex;

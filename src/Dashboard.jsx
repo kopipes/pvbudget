@@ -81,8 +81,9 @@ function Dashboard({ user, token, onLogout, onOpenForm }) {
   const isAdmin = user.role === 'admin';
   const isCorporate = user.role === 'corporate';
   const isManager = user.role === 'manager';
+  const isPurchasing = user.role === 'purchasing';
   const canApprove = isAdmin || isCorporate;
-  const canCreate = !isCorporate;
+  const canCreate = !isCorporate && !isPurchasing;
   const canSeeOnOpen = !!onOpenForm;
 
   const fetchDashboardData = async () => {
