@@ -398,8 +398,8 @@ function setupUserRoutes(app) {
             return res.status(400).json({ error: 'username, password, display_name, and role are required' });
         }
 
-        if (!['admin', 'corporate', 'manager', 'user'].includes(role)) {
-            return res.status(400).json({ error: 'role must be admin, corporate, manager, or user' });
+        if (!['admin', 'corporate', 'manager', 'user', 'purchasing'].includes(role)) {
+            return res.status(400).json({ error: 'role must be admin, corporate, manager, user, or purchasing' });
         }
 
         const hash = bcrypt.hashSync(password, 10);
@@ -448,8 +448,8 @@ function setupUserRoutes(app) {
         if (username) { fields.push('username = ?'); params.push(username); }
         if (display_name) { fields.push('display_name = ?'); params.push(display_name); }
         if (role) {
-            if (!['admin', 'corporate', 'manager', 'user'].includes(role)) {
-                return res.status(400).json({ error: 'role must be admin, corporate, manager, or user' });
+            if (!['admin', 'corporate', 'manager', 'user', 'purchasing'].includes(role)) {
+                return res.status(400).json({ error: 'role must be admin, corporate, manager, user, or purchasing' });
             }
             fields.push('role = ?');
             params.push(role);
