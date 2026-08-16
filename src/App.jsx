@@ -1044,11 +1044,10 @@ function App({ user, token, onLogout, initialFormId, onInitialFormLoaded }) {
         </span>;
     };
 
-    if (showUserMgmt) return <UserManagement token={token} onClose={() => setShowUserMgmt(false)} />;
-    if (showDivisionMgmt) return <DivisionManagement token={token} onClose={() => setShowDivisionMgmt(false)} />;
-
     return (
         <div className="app-container">
+            {showUserMgmt && <UserManagement token={token} onClose={() => setShowUserMgmt(false)} />}
+            {showDivisionMgmt && <DivisionManagement token={token} onClose={() => setShowDivisionMgmt(false)} />}
             {/* DASHBOARD VIEW */}
             {showDashboard ? (
                 <Dashboard user={user} token={token} onLogout={onLogout} onOpenForm={(id) => { loadForm(id); }} />

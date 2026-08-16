@@ -187,16 +187,14 @@ export default function UserManagement({ token, onClose }) {
     const pagedUsers = filteredUsers.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
     return (
-        <div className="admin-page">
-            <div className="admin-page-header">
-                <button className="btn btn-secondary btn-sm" onClick={onClose}>
-                    ← Back
-                </button>
-                <h2><Shield size={20} /> User Management</h2>
-                <div style={{ width: '80px' }} />
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="modal-content modal-lg" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+                <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Shield size={20} /> User Management</h2>
+                <button onClick={onClose}><X size={24} /></button>
             </div>
 
-            <div className="admin-page-body">
+            <div className="modal-body">
                 {error && <div className="um-alert um-alert-error">{error}</div>}
                 {success && <div className="um-alert um-alert-success">{success}</div>}
 
@@ -386,6 +384,7 @@ export default function UserManagement({ token, onClose }) {
                     </div>
                 </div>
             )}
+            </div>
         </div>
     );
 }
