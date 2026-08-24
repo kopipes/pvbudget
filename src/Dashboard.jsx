@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import './Dashboard.css';
-import { LogOut, Shield, Building2 } from 'lucide-react';
+import { LogOut, Shield, Building2, Mail } from 'lucide-react';
 import {
   FileText,
   CheckCircle,
@@ -16,6 +16,7 @@ import {
 import UserManagement from './UserManagement.jsx';
 import { apiFetch } from './utils/api.js';
 import DivisionManagement from './DivisionManagement.jsx';
+import EmailLogModal from './EmailLogModal.jsx';
 
 const API = import.meta.env.VITE_API_URL || '';
 
@@ -54,6 +55,7 @@ function Dashboard({ user, token, onLogout, onOpenForm }) {
   const PAGE_SIZE = 20;
   const [showUserMgmt, setShowUserMgmt] = useState(false);
   const [showDivisionMgmt, setShowDivisionMgmt] = useState(false);
+  const [showEmailLog, setShowEmailLog] = useState(false);
   const [copyToast, setCopyToast] = useState(null);
 
   const handleShare = (formId) => {
@@ -179,6 +181,9 @@ function Dashboard({ user, token, onLogout, onOpenForm }) {
               </button>
               <button className="btn btn-secondary btn-sm" onClick={() => setShowUserMgmt(true)}>
                 <Shield size={14} /> Users
+              </button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowEmailLog(true)}>
+                <Mail size={14} /> Email Log
               </button>
             </>
           )}
@@ -386,6 +391,9 @@ function Dashboard({ user, token, onLogout, onOpenForm }) {
 
       {/* DIVISION MANAGEMENT MODAL */}
       {isAdmin && showDivisionMgmt && <DivisionManagement token={token} onClose={() => setShowDivisionMgmt(false)} />}
+
+      {/* EMAIL LOG MODAL */}
+      {isAdmin && showEmailLog && <EmailLogModal token={token} onClose={() => setShowEmailLog(false)} />}
     </div>
   );
 }
