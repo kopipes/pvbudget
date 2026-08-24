@@ -6,7 +6,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const db = require('./db.cjs');
 const { authMiddleware, setupAuthRoutes, setupUserRoutes } = require('./auth.cjs');
-const { sendApprovalNotification } = require('./mailer.cjs');
+const { sendApprovalNotification, buildEmailHtml } = require('./mailer.cjs');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -867,6 +867,30 @@ app.post('/api/forms/:id/create-realization', (req, res) => {
 });
 
  // Division routes are handled by setupUserRoutes in auth.cjs
+
+// ─── Admin: Email Preview ────────────────────────────────────────────────────
+app.get('/api/admin/email-preview', authMiddleware, (req, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+    const sampleForm = {
+        project_no: 'PV-2026-001',
+        event: 'Annual Company Gathering',
+        venue: 'Hotel Grand Hyatt, Jakarta',
+        periode: 'September 2026',
+        data: JSON.stringify([
+            { name: 'Venue & Catering', subs: [{ total: 45000000 }, { total: 12500000 }] },
+            { name: 'Entertainment', subs: [{ total: 8000000 }] },
+            { name: 'Logistics', subs: [{ total: 5750000 }] }
+        ])
+    };
+    const html = buildEmailHtml({
+        form: sampleForm,
+        recipientName: 'John Doe',
+        approver1Name: 'Manager One',
+        approver2Name: 'Corporate Director',
+    });
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
+});
 
 // ─── Admin: Email Log ────────────────────────────────────────────────────────
 app.get('/api/admin/email-log', authMiddleware, (req, res) => {

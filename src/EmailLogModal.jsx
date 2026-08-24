@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Mail, CheckCircle, XCircle, AlertCircle, RefreshCw, Bell } from 'lucide-react';
+import { X, Mail, CheckCircle, XCircle, AlertCircle, RefreshCw, Bell, Eye } from 'lucide-react';
 
 const API = import.meta.env.VITE_API_URL || '';
 
@@ -10,6 +10,8 @@ export default function EmailLogModal({ token, onClose }) {
     const [financeSuccess, setFinanceSuccess] = useState('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [previewHtml, setPreviewHtml] = useState(null);
+    const [previewLoading, setPreviewLoading] = useState(false);
 
     const headers = {
         'Content-Type': 'application/json',
@@ -47,6 +49,19 @@ export default function EmailLogModal({ token, onClose }) {
                 }
             }
         } catch {}
+    };
+
+    const openPreview = async () => {
+        setPreviewLoading(true);
+        try {
+            const res = await fetch(`${API}/api/admin/email-preview`, { headers });
+            const html = await res.text();
+            setPreviewHtml(html);
+        } catch {
+            setPreviewHtml('<p style="padding:2rem;color:red">Failed to load preview.</p>');
+        } finally {
+            setPreviewLoading(false);
+        }
     };
 
     useEffect(() => { fetchLogs(); fetchUsers(); fetchSettings(); }, []);
@@ -96,6 +111,7 @@ export default function EmailLogModal({ token, onClose }) {
     const usersWithEmail = users.filter(u => u.email);
 
     return (
+        <>
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal-content modal-lg" onClick={e => e.stopPropagation()}>
                 <div className="modal-header">
@@ -103,6 +119,14 @@ export default function EmailLogModal({ token, onClose }) {
                         <Mail size={20} /> Email Notifications
                     </h2>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={openPreview}
+                            disabled={previewLoading}
+                            title="Preview email template"
+                        >
+                            <Eye size={14} /> {previewLoading ? 'Loading...' : 'Preview Email'}
+                        </button>
                         <button className="btn btn-secondary btn-sm" onClick={fetchLogs} title="Refresh log">
                             <RefreshCw size={14} />
                         </button>
@@ -197,5 +221,30 @@ export default function EmailLogModal({ token, onClose }) {
                 </div>
             </div>
         </div>
+
+        {/* Email Preview Modal */}
+        {previewHtml && (
+            <div className="modal-overlay" style={{ zIndex: 9999 }} onClick={() => setPreviewHtml(null)}>
+                <div
+                    className="modal-content"
+                    style={{ maxWidth: '680px', width: '95%', maxHeight: '90vh', padding: '0', overflow: 'hidden' }}
+                    onClick={e => e.stopPropagation()}
+                >
+                    <div className="modal-header" style={{ padding: '1rem 1.5rem' }}>
+                        <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem' }}>
+                            <Eye size={16} /> Email Preview (Sample Data)
+                        </h2>
+                        <button onClick={() => setPreviewHtml(null)}><X size={24} /></button>
+                    </div>
+                    <iframe
+                        srcDoc={previewHtml}
+                        title="Email Preview"
+                        style={{ width: '100%', height: '600px', border: 'none', display: 'block' }}
+                        sandbox="allow-same-origin"
+                    />
+                </div>
+            </div>
+        )}
+        </>
     );
 }

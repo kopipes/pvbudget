@@ -210,4 +210,4 @@ async function sendApprovalNotification(form, approver2Id) {
     }
 }
 
-module.exports = { sendApprovalNotification };
+module.exports = { sendApprovalNotification, buildEmailHtml };
