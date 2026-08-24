@@ -108,7 +108,7 @@ function App({ user, token, onLogout, initialFormId, onInitialFormLoaded }) {
     const canEditRealisasi = isAdmin || (!isReadOnly && !isCorporate && !isPurchasing && (canEdit || (currentStatus === STATUS.APPROVED && activeTab === 'realisasi' && hasRealization && String(loadedForm?.created_by) === String(user.id))));
     const canSubmit = (isManager || isAdmin) && [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus) && (currentStatus !== STATUS.REVISION || currentFormId);
     const canApprove = isAdmin || isCorporate;
-    const canDelete = isAdmin && [STATUS.DRAFT, STATUS.REVISION, 'archived'].includes(currentStatus);
+    const canDelete = isAdmin && [STATUS.DRAFT, STATUS.REVISION, STATUS.APPROVED, 'archived'].includes(currentStatus);
 
     const [idleWarning, setIdleWarning] = useState(false);
 
@@ -629,7 +629,11 @@ function App({ user, token, onLogout, initialFormId, onInitialFormLoaded }) {
 
     const handleDeleteForm = async () => {
         if (!currentFormId || !canDelete) return;
-        const confirmed = await showDialog('confirm', 'Delete this form? This cannot be undone.', 'Delete Form');
+        const isApproved = currentStatus === STATUS.APPROVED;
+        const message = isApproved
+            ? `WARNING: This form is APPROVED. Deleting it is permanent and cannot be undone. Are you sure?`
+            : 'Delete this form? This cannot be undone.';
+        const confirmed = await showDialog('confirm', message, 'Delete Form');
         if (!confirmed) return;
         try {
             const res = await apiFetch(`${API}/api/forms/${currentFormId}`, { method: 'DELETE', headers: authHeaders });
