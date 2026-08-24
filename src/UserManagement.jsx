@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Plus, Trash2, Edit2, Save, Shield, Users, UserCheck, Search, Bell } from 'lucide-react';
+import { X, Plus, Trash2, Edit2, Save, Shield, Users, UserCheck, Search } from 'lucide-react';
 
 const API = import.meta.env.VITE_API_URL || '';
 const PAGE_SIZE = 15;
@@ -34,42 +34,6 @@ export default function UserManagement({ token, onClose }) {
     };
 
     const [divisions, setDivisions] = useState([]);
-    const [financeIds, setFinanceIds] = useState([]);
-    const [financeSuccess, setFinanceSuccess] = useState('');
-
-    const fetchSettings = async () => {
-        try {
-            const res = await fetch(`${API}/api/admin/settings`, { headers });
-            if (res.ok) {
-                const data = await res.json();
-                if (data.finance_recipient_ids) {
-                    try { setFinanceIds(JSON.parse(data.finance_recipient_ids)); } catch {}
-                }
-            }
-        } catch {}
-    };
-
-    const saveFinanceIds = async (ids) => {
-        try {
-            const res = await fetch(`${API}/api/admin/settings`, {
-                method: 'PUT', headers,
-                body: JSON.stringify({ key: 'finance_recipient_ids', value: JSON.stringify(ids) })
-            });
-            if (res.ok) {
-                setFinanceSuccess('Finance recipients saved');
-                setTimeout(() => setFinanceSuccess(''), 3000);
-            }
-        } catch {}
-    };
-
-    const toggleFinanceId = (id) => {
-        const numId = Number(id);
-        const updated = financeIds.includes(numId)
-            ? financeIds.filter(i => i !== numId)
-            : [...financeIds, numId];
-        setFinanceIds(updated);
-        saveFinanceIds(updated);
-    };
 
     const fetchUsers = async () => {
         try {
@@ -96,7 +60,7 @@ export default function UserManagement({ token, onClose }) {
         }
     };
 
-    useEffect(() => { fetchUsers(); fetchDivisions(); fetchSettings(); }, []);
+    useEffect(() => { fetchUsers(); fetchDivisions(); }, []);
 
     const resetForm = () => {
         setForm({ username: '', password: '', display_name: '', email: '', role: 'user', manager_id: '', division_id: '', managedDivisions: [] });
@@ -402,40 +366,6 @@ export default function UserManagement({ token, onClose }) {
                         <button className="btn btn-secondary btn-sm" onClick={() => setPage(p => Math.min(totalUserPages, p + 1))} disabled={page === totalUserPages}>Next →</button>
                     </div>
                 )}
-
-                {/* Finance Notification Recipients */}
-                <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem', marginTop: '0.5rem' }}>
-                    <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.95rem', marginBottom: '0.5rem', color: 'var(--text-main)' }}>
-                        <Bell size={16} /> Approval Notification Recipients
-                    </h3>
-                    <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
-                        These users will receive an email when a form is fully approved (2nd approval complete), in addition to the form creator and their manager.
-                    </p>
-                    {financeSuccess && <div className="um-alert um-alert-success" style={{ marginBottom: '0.5rem' }}>{financeSuccess}</div>}
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                        {users.filter(u => u.email).map(u => (
-                            <label key={u.id} style={{
-                                display: 'flex', alignItems: 'center', gap: '0.4rem',
-                                padding: '4px 10px', borderRadius: '6px', cursor: 'pointer',
-                                border: `1px solid ${financeIds.includes(Number(u.id)) ? 'var(--primary)' : 'var(--border)'}`,
-                                background: financeIds.includes(Number(u.id)) ? 'var(--primary-light, #eff6ff)' : 'transparent',
-                                fontSize: '13px', userSelect: 'none'
-                            }}>
-                                <input
-                                    type="checkbox"
-                                    checked={financeIds.includes(Number(u.id))}
-                                    onChange={() => toggleFinanceId(u.id)}
-                                    style={{ margin: 0 }}
-                                />
-                                <span>{u.display_name}</span>
-                                <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>({u.email})</span>
-                            </label>
-                        ))}
-                        {users.filter(u => u.email).length === 0 && (
-                            <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>No users with email addresses found. Set email addresses in user profiles first.</p>
-                        )}
-                    </div>
-                </div>
             </div>
 
             {/* Confirm Dialog */}
