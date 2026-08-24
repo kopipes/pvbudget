@@ -6,6 +6,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const db = require('./db.cjs');
 const { authMiddleware, setupAuthRoutes, setupUserRoutes } = require('./auth.cjs');
+const { sendApprovalNotification } = require('./mailer.cjs');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -528,6 +529,10 @@ app.post('/api/forms/:id/approve', (req, res) => {
                         [form.root_form_id || form.id, STATUS.APPROVED, id], () => {});
                     db.run(`INSERT INTO approval_history (form_id, action, note, actor_id, approval_stage) VALUES (?, 'approve', ?, ?, ?)`,
                         [id, note || 'Final approval', req.user.id, '2nd'], () => {});
+                    // Send approval notification emails (fire-and-forget — don't block response)
+                    const formForMail = { ...form, approved_by_1: form.approved_by_1 };
+                    sendApprovalNotification(formForMail, req.user.id)
+                        .catch(e => console.error('[mailer] sendApprovalNotification error:', e.message));
                     res.json({ id, message: 'Form fully approved! (2nd approval complete)' });
                 }
             );
@@ -862,6 +867,50 @@ app.post('/api/forms/:id/create-realization', (req, res) => {
 });
 
  // Division routes are handled by setupUserRoutes in auth.cjs
+
+// ─── Admin: Email Log ────────────────────────────────────────────────────────
+app.get('/api/admin/email-log', authMiddleware, (req, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+    const formId = req.query.form_id;
+    const sql = formId
+        ? `SELECT el.*, f.project_no, f.event FROM email_log el
+           LEFT JOIN forms f ON f.id = el.form_id
+           WHERE el.form_id = ? ORDER BY el.sent_at DESC`
+        : `SELECT el.*, f.project_no, f.event FROM email_log el
+           LEFT JOIN forms f ON f.id = el.form_id
+           ORDER BY el.sent_at DESC LIMIT 200`;
+    const params = formId ? [formId] : [];
+    db.all(sql, params, (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+// ─── Admin: App Settings (GET + PUT) ─────────────────────────────────────────
+app.get('/api/admin/settings', authMiddleware, (req, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+    db.all('SELECT key, value FROM app_settings', (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        const settings = {};
+        (rows || []).forEach(r => { settings[r.key] = r.value; });
+        res.json(settings);
+    });
+});
+
+app.put('/api/admin/settings', authMiddleware, (req, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+    const { key, value } = req.body;
+    if (!key) return res.status(400).json({ error: 'key is required' });
+    db.run(
+        `INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`,
+        [key, value],
+        (err) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ ok: true });
+        }
+    );
+});
 
  // Serve static frontend files in production
 const distPath = path.join(__dirname, '..', 'dist');

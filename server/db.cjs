@@ -126,6 +126,27 @@ const db = new sqlite3.Database(dbPath, (err) => {
         db.run(`ALTER TABLE forms ADD COLUMN include_pph23 INTEGER DEFAULT 1`, () => {});
         db.run(`ALTER TABLE forms ADD COLUMN discount_pct REAL DEFAULT 0`, () => {});
 
+        // Create email_log table
+        db.run(`CREATE TABLE IF NOT EXISTS email_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            form_id INTEGER NOT NULL,
+            to_email TEXT NOT NULL,
+            to_name TEXT,
+            subject TEXT,
+            status TEXT NOT NULL DEFAULT 'sent',
+            resend_id TEXT,
+            error TEXT,
+            sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (form_id) REFERENCES forms(id) ON DELETE CASCADE
+        )`);
+
+        // Create app_settings table (key/value store for admin config)
+        db.run(`CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`);
+
         // Create password_reset_tokens table
         db.run(`CREATE TABLE IF NOT EXISTS password_reset_tokens (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

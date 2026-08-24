@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, PlusCircle, Save, FileDown, FilePlus, Search, X, AlertTriangle, LogOut, Shield, Building2, Send, Check, RefreshCw, Clock, CheckCircle, XCircle, History, Eye, LayoutDashboard, Receipt, GripVertical } from 'lucide-react';
+import { Plus, Trash2, PlusCircle, Save, FileDown, FilePlus, Search, X, AlertTriangle, LogOut, Shield, Building2, Send, Check, RefreshCw, Clock, CheckCircle, XCircle, History, Eye, LayoutDashboard, Receipt, GripVertical, Mail } from 'lucide-react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import * as XLSX from 'xlsx';
 import UserManagement from './UserManagement.jsx';
 import DivisionManagement from './DivisionManagement.jsx';
+import EmailLogModal from './EmailLogModal.jsx';
 import Dashboard from './Dashboard.jsx';
 import SortableRow from './SortableRow.jsx';
 import { TAX_RATES } from './config.js';
@@ -69,6 +70,7 @@ function App({ user, token, onLogout, initialFormId, onInitialFormLoaded }) {
     const [formList, setFormList] = useState([]);
     const [showUserMgmt, setShowUserMgmt] = useState(false);
     const [showDivisionMgmt, setShowDivisionMgmt] = useState(false);
+    const [showEmailLog, setShowEmailLog] = useState(false);
     const [dialogConfig, setDialogConfig] = useState(null);
     const [showDashboard, setShowDashboard] = useState(true);
     const [openedFormId, setOpenedFormId] = useState(null);
@@ -1048,6 +1050,7 @@ function App({ user, token, onLogout, initialFormId, onInitialFormLoaded }) {
         <div className="app-container">
             {showUserMgmt && <UserManagement token={token} onClose={() => setShowUserMgmt(false)} />}
             {showDivisionMgmt && <DivisionManagement token={token} onClose={() => setShowDivisionMgmt(false)} />}
+            {showEmailLog && <EmailLogModal token={token} onClose={() => setShowEmailLog(false)} />}
             {/* DASHBOARD VIEW */}
             {showDashboard ? (
                 <Dashboard user={user} token={token} onLogout={onLogout} onOpenForm={(id) => { loadForm(id); }} />
@@ -1095,6 +1098,7 @@ function App({ user, token, onLogout, initialFormId, onInitialFormLoaded }) {
                         <>
                             <button className="btn btn-secondary btn-sm" onClick={() => setShowDivisionMgmt(true)}><Building2 size={14} /> Divisions</button>
                             <button className="btn btn-secondary btn-sm" onClick={() => setShowUserMgmt(true)}><Shield size={14} /> Users</button>
+                            <button className="btn btn-secondary btn-sm" onClick={() => setShowEmailLog(true)}><Mail size={14} /> Email Log</button>
                         </>
                     )}
                     <button className="btn btn-secondary btn-sm" onClick={onLogout}><LogOut size={14} /> Logout</button>
