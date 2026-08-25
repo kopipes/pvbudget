@@ -58,19 +58,24 @@ function Dashboard({ user, token, onLogout, onOpenForm }) {
   const [showEmailLog, setShowEmailLog] = useState(false);
   const [copyToast, setCopyToast] = useState(null);
 
-  const handleShare = (formId) => {
-    const url = `${window.location.origin}${window.location.pathname}?form=${formId}`;
-    navigator.clipboard.writeText(url).then(() => {
-      setCopyToast(formId);
+  const handleShare = (form) => {
+    const url = `${window.location.origin}${window.location.pathname}?form=${form.id}`;
+    const lines = [];
+    if (form.event) lines.push(`Event: ${form.event}`);
+    if (form.venue) lines.push(`Venue: ${form.venue}`);
+    lines.push(`Link: ${url}`);
+    const text = lines.join('\n');
+    navigator.clipboard.writeText(text).then(() => {
+      setCopyToast(form.id);
       setTimeout(() => setCopyToast(null), 2000);
     }).catch(() => {
       const el = document.createElement('textarea');
-      el.value = url;
+      el.value = text;
       document.body.appendChild(el);
       el.select();
       document.execCommand('copy');
       document.body.removeChild(el);
-      setCopyToast(formId);
+      setCopyToast(form.id);
       setTimeout(() => setCopyToast(null), 2000);
     });
   };
@@ -363,7 +368,7 @@ function Dashboard({ user, token, onLogout, onOpenForm }) {
                         <button
                           className="btn btn-sm btn-secondary"
                           title="Copy share link"
-                          onClick={() => handleShare(form.id)}
+                          onClick={() => handleShare(form)}
                           style={{ marginLeft: '0.25rem', minWidth: '32px', padding: '0.4rem 0.5rem' }}
                         >
                           {copyToast === form.id ? <CheckCircle size={14} style={{ color: '#16a34a' }} /> : <Share2 size={14} />}
