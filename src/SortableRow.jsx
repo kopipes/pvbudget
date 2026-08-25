@@ -21,8 +21,8 @@ function SortableRow({
                         </span>
                     )}
                 </td>
-                <td>
-                    <input type="text" className="cell-input" value={mainItem.name} onChange={(e) => updateMainItemName(mainItem.id, mainIndex, e.target.value)} style={{ fontWeight: 700 }} disabled={!canEditAllFields} title={!canEditAllFields && mainItem.name ? mainItem.name : undefined} />
+                <td title={!canEditAllFields && mainItem.name ? mainItem.name : undefined}>
+                    <input type="text" className="cell-input" value={mainItem.name} onChange={(e) => updateMainItemName(mainItem.id, mainIndex, e.target.value)} style={{ fontWeight: 700 }} disabled={!canEditAllFields} />
                 </td>
                 <td></td><td></td><td></td><td></td>
                 {activeTab === 'realisasi' && <td></td>}
@@ -115,14 +115,13 @@ function SortableLabelItem({ sub, mainItemId, mainIndex, canEditAllFields, activ
                     </span>
                 )}
             </td>
-            <td colSpan={colSpan + 1}>
+            <td colSpan={colSpan + 1} title={!canEdit && sub.name ? sub.name : undefined}>
                 <input
                     type="text"
                     className="cell-input"
                     value={sub.name}
                     onChange={(e) => updateSubItem(mainItemId, sub.id, 'name', e.target.value)}
                     disabled={!canEdit}
-                    title={!canEdit && sub.name ? sub.name : undefined}
                     style={{
                         fontWeight: 600,
                         fontStyle: 'italic',
@@ -188,8 +187,8 @@ function SortableSubItem({
                     </span>
                 )}
             </td>
-            <td>
-                <input type="text" className="cell-input" value={sub.name} onChange={(e) => updateSubItem(mainItemId, sub.id, 'name', e.target.value)} style={{ paddingLeft: '1rem', ...(!canEditDescription ? lockedStyle : {}) }} disabled={!canEditDescription} title={!canEditDescription && sub.name ? sub.name : undefined} />
+            <td title={!canEditDescription && sub.name ? sub.name : undefined}>
+                <input type="text" className="cell-input" value={sub.name} onChange={(e) => updateSubItem(mainItemId, sub.id, 'name', e.target.value)} style={{ paddingLeft: '1rem', ...(!canEditDescription ? lockedStyle : {}) }} disabled={!canEditDescription} />
             </td>
             <td>
                 <input type="number" className="cell-input align-center" value={sub.qty} onChange={(e) => updateSubItem(mainItemId, sub.id, 'qty', parseFloat(e.target.value) || 0)} style={!effectiveCanEditAllFields ? lockedStyle : {}} disabled={!effectiveCanEditAllFields} />
