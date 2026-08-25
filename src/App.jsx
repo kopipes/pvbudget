@@ -53,6 +53,7 @@ function App({ user, token, onLogout, initialFormId, onInitialFormLoaded }) {
         periodeEnd: '',
         managementFeePercent: 10,
         note: '',
+        projectLink: '',
         creatorName: user.display_name,
         divisionId: user.division_id || ''
     });
@@ -443,7 +444,7 @@ function App({ user, token, onLogout, initialFormId, onInitialFormLoaded }) {
     };
 
     const resetFormState = () => {
-        setEventData({ projectNo: '', name: '', venue: '', periode: '', periodeStart: '', periodeEnd: '', managementFeePercent: 10, note: '', creatorName: user.display_name, divisionId: user.division_id || '' });
+        setEventData({ projectNo: '', name: '', venue: '', periode: '', periodeStart: '', periodeEnd: '', managementFeePercent: 10, note: '', projectLink: '', creatorName: user.display_name, divisionId: user.division_id || '' });
         setItems([{ id: generateId(), name: 'NEW SECTION', subs: [] }]);
         setCurrentFormId(null);
         setCurrentStatus(STATUS.DRAFT);
@@ -525,7 +526,7 @@ function App({ user, token, onLogout, initialFormId, onInitialFormLoaded }) {
             projectNo: '', name: '', venue: '',
             periode: form.periode || '', periodeStart: '', periodeEnd: '',
             managementFeePercent: form.management_fee_pct != null ? form.management_fee_pct : 10,
-            note: '', creatorName: user.display_name, divisionId: user.division_id || ''
+            note: '', projectLink: '', creatorName: user.display_name, divisionId: user.division_id || ''
         });
         setSelectedDivisionId(user.division_id || '');
         setItems(form.data && Array.isArray(form.data) ? JSON.parse(JSON.stringify(form.data)) : [{ id: generateId(), name: 'NEW SECTION', subs: [] }]);
@@ -545,7 +546,8 @@ function App({ user, token, onLogout, initialFormId, onInitialFormLoaded }) {
                 project_no: eventData.projectNo, event: eventData.name, venue: eventData.venue,
                 periode: eventData.periode, periode_start: eventData.periodeStart, periode_end: eventData.periodeEnd,
                 management_fee_pct: eventData.managementFeePercent, note: eventData.note,
-                division_id: selectedDivisionId || null, data: items, include_pph23: includePph23 ? 1 : 0, discount_pct: discountPct || 0
+                division_id: selectedDivisionId || null, data: items, include_pph23: includePph23 ? 1 : 0, discount_pct: discountPct || 0,
+                project_link: eventData.projectLink || null
             };
             let url = `${API}/api/forms`;
             let method = 'POST';
@@ -697,7 +699,8 @@ function App({ user, token, onLogout, initialFormId, onInitialFormLoaded }) {
                     managementFeePercent: mgmtFee,
                     note: form.note || '', creatorName: form.creator_name || 'Unknown',
                     revisionNote: form.revision_note || '',
-                    divisionId: form.division_id || ''
+                    divisionId: form.division_id || '',
+                    projectLink: form.project_link || ''
                 });
                 // Store budget's management fee for REALISASI tab calculations
                 setBudgetMgmtFeePct(mgmtFee);
@@ -1327,6 +1330,36 @@ function App({ user, token, onLogout, initialFormId, onInitialFormLoaded }) {
                 <div className="input-group">
                     <label>Venue</label>
                     <input type="text" value={eventData.venue} onChange={(e) => setEventData({ ...eventData, venue: e.target.value })} placeholder="Event Venue" disabled={!canEdit} />
+                </div>
+                <div className="input-group">
+                    <label>Project Link</label>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <input
+                            type="text"
+                            value={eventData.projectLink || ''}
+                            onChange={(e) => setEventData({ ...eventData, projectLink: e.target.value })}
+                            placeholder="https://..."
+                            disabled={!canEdit}
+                            style={{ flex: 1 }}
+                        />
+                        {eventData.projectLink && (
+                            <a
+                                href={eventData.projectLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="Open link"
+                                style={{
+                                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                    padding: '0.55rem 0.75rem', borderRadius: '8px',
+                                    background: 'var(--primary)', color: '#fff',
+                                    textDecoration: 'none', fontSize: '0.85rem', fontWeight: 500,
+                                    whiteSpace: 'nowrap', flexShrink: 0
+                                }}
+                            >
+                                Open ↗
+                            </a>
+                        )}
+                    </div>
                 </div>
                 <div className="input-group">
                     <label>Periode Dates</label>
