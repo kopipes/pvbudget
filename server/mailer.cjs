@@ -28,7 +28,12 @@ function buildEmailHtml({ form, recipientName, approver1Name, approver2Name }) {
             const data = JSON.parse(form.data || '[]');
             const total = data.reduce((sum, section) => {
                 if (Array.isArray(section.subs)) {
-                    return sum + section.subs.reduce((s, sub) => s + (parseFloat(sub.total) || 0), 0);
+                    return sum + section.subs.reduce((s, sub) => {
+                        if (sub.type === 'label') return s;
+                        // sub.total is computed as qty * mdy * rate
+                        const computed = (parseFloat(sub.qty) || 0) * (parseFloat(sub.mdy) || 0) * (parseFloat(sub.rate) || 0);
+                        return s + computed;
+                    }, 0);
                 }
                 return sum;
             }, 0);
