@@ -18,14 +18,16 @@ const STATUS = {
     DRAFT: 'draft',
     PENDING: 'pending',
     REVISION: 'revision',
-    APPROVED: 'approved'
+    APPROVED: 'approved',
+    PENDING_MANAGER_REVIEW: 'pending_manager_review'
 };
 
 const STATUS_LABELS = {
     draft: 'Draft',
     pending: 'Pending Approval',
     revision: 'Needs Revision',
-    approved: 'Approved'
+    approved: 'Approved',
+    pending_manager_review: 'Pending Manager Review'
 };
 
 const formatCurrency = (amount) => {
@@ -105,14 +107,22 @@ function App({ user, token, onLogout, initialFormId, onInitialFormLoaded }) {
     const isCorporate = user.role === 'corporate';
     const isPurchasing = user.role === 'purchasing';
     const isManager = user.role === 'manager';
-    // Can edit: only on draft/revision status (admin included, except archived)
-    const canEdit = !isCorporate && !isPurchasing && !isReadOnly && [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus);
+    // Can edit: draft/revision always; pending_manager_review for admin/manager only
+    const canEdit = !isCorporate && !isPurchasing && !isReadOnly && (
+        [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus) ||
+        (currentStatus === STATUS.PENDING_MANAGER_REVIEW && (isAdmin || isManager))
+    );
     // PO Number: admin/manager can edit
     const canEditPONumber = isAdmin || isManager;
     const canEditRealisasi = isAdmin || (!isReadOnly && !isCorporate && !isPurchasing && (canEdit || (currentStatus === STATUS.APPROVED && activeTab === 'realisasi' && hasRealization && String(loadedForm?.created_by) === String(user.id))));
     const canSubmit = (isManager || isAdmin) && [STATUS.DRAFT, STATUS.REVISION].includes(currentStatus) && (currentStatus !== STATUS.REVISION || currentFormId);
     const canApprove = isAdmin || isCorporate;
-    const canDelete = isAdmin && [STATUS.DRAFT, STATUS.REVISION, STATUS.APPROVED, 'archived'].includes(currentStatus);
+    const canDelete = isAdmin && [STATUS.DRAFT, STATUS.REVISION, STATUS.APPROVED, STATUS.PENDING_MANAGER_REVIEW, 'archived'].includes(currentStatus);
+    // Owner can submit for manager review: must be form owner, draft, and have parent_id (post-approval edit)
+    const isFormOwner = String(loadedForm?.created_by) === String(user.id);
+    const canSubmitManagerReview = !isAdmin && !isManager && isFormOwner && currentStatus === STATUS.DRAFT && !!loadedForm?.parent_id;
+    // Manager can approve/reject pending_manager_review forms in their division
+    const canManagerReview = (isAdmin || isManager) && currentStatus === STATUS.PENDING_MANAGER_REVIEW && currentFormId;
 
     const [idleWarning, setIdleWarning] = useState(false);
 
@@ -164,7 +174,7 @@ function App({ user, token, onLogout, initialFormId, onInitialFormLoaded }) {
 
     useEffect(() => {
         fetchDivisions();
-        if (isCorporate || isAdmin) fetchPendingApprovals();
+        if (isCorporate || isAdmin || isManager) fetchPendingApprovals();
         fetchMyForms();
     }, []);
 
@@ -671,6 +681,67 @@ function App({ user, token, onLogout, initialFormId, onInitialFormLoaded }) {
             await showDialog('alert', data.message, 'Version Finalized');
             loadForm(currentFormId);
         } catch (e) { await showDialog('alert', 'Failed to finalize version', 'Error'); }
+    };
+
+    const handleAllowOwnerEdit = async () => {
+        const editors = JSON.parse(loadedForm?.post_approval_editors || '[]').map(Number);
+        const ownerId = Number(loadedForm?.created_by);
+        const currentlyGranted = editors.includes(ownerId);
+        const action = currentlyGranted ? 'Revoke' : 'Allow';
+        const confirmed = await showDialog('confirm',
+            currentlyGranted
+                ? 'Revoke owner edit permission? The form owner will no longer be able to create new versions.'
+                : 'Allow the form owner to create and edit a new version of this form? They will need to submit it for your review.',
+            `${action} Owner Edit`
+        );
+        if (!confirmed) return;
+        try {
+            const res = await apiFetch(`${API}/api/forms/${currentFormId}/allow-owner-edit`, { method: 'PUT', headers: authHeaders });
+            const data = await res.json();
+            if (!res.ok) { await showDialog('alert', data.error || 'Failed', 'Error'); return; }
+            setPostApprovalEditors(data.editors || []);
+            await showDialog('alert', data.message, action + ' Owner Edit');
+        } catch (e) { await showDialog('alert', 'Failed to update owner edit permission', 'Error'); }
+    };
+
+    const handleSubmitManagerReview = async () => {
+        const confirmed = await showDialog('confirm', 'Submit this version for manager review? Your manager will be notified to approve or reject your changes.', 'Submit for Manager Review');
+        if (!confirmed) return;
+        try {
+            const res = await apiFetch(`${API}/api/forms/${currentFormId}/submit-manager-review`, { method: 'PUT', headers: authHeaders });
+            const data = await res.json();
+            if (!res.ok) { await showDialog('alert', data.error || 'Failed', 'Error'); return; }
+            await showDialog('alert', data.message, 'Submitted');
+            loadForm(currentFormId);
+        } catch (e) { await showDialog('alert', 'Failed to submit for manager review', 'Error'); }
+    };
+
+    const handleManagerApproveVersion = async () => {
+        const confirmed = await showDialog('confirm', `Approve this version? It will be auto-approved and the previous version archived.`, 'Approve Version');
+        if (!confirmed) return;
+        try {
+            const res = await apiFetch(`${API}/api/forms/${currentFormId}/manager-approve-version`, { method: 'PUT', headers: authHeaders });
+            const data = await res.json();
+            if (!res.ok) { await showDialog('alert', data.error || 'Failed', 'Error'); return; }
+            await showDialog('alert', data.message, 'Version Approved');
+            loadForm(currentFormId);
+            fetchPendingApprovals();
+        } catch (e) { await showDialog('alert', 'Failed to approve version', 'Error'); }
+    };
+
+    const handleManagerRejectVersion = async () => {
+        const note = await showDialog('prompt', 'Enter rejection note (required):\n\nTell the owner what needs to be changed:', 'Reject Version');
+        if (!note || !note.trim()) { await showDialog('alert', 'Rejection note is required.', 'Required'); return; }
+        try {
+            const res = await apiFetch(`${API}/api/forms/${currentFormId}/manager-reject-version`, {
+                method: 'PUT', headers: authHeaders, body: JSON.stringify({ note })
+            });
+            const data = await res.json();
+            if (!res.ok) { await showDialog('alert', data.error || 'Failed', 'Error'); return; }
+            await showDialog('alert', data.message, 'Version Rejected');
+            loadForm(currentFormId);
+            fetchPendingApprovals();
+        } catch (e) { await showDialog('alert', 'Failed to reject version', 'Error'); }
     };
 
     const handleSavePostApprovalEditors = async (editorIds) => {
@@ -1315,27 +1386,60 @@ function App({ user, token, onLogout, initialFormId, onInitialFormLoaded }) {
                         <RefreshCw size={16} /> Unlock for Revision
                     </button>
                 )}
-                {/* Post-approval edit: Edit New Version button for admin + permitted editors + division managers */}
+                {/* Post-approval edit: Edit New Version button for admin + permitted editors + division managers (NOT form owner — they have their own flow) */}
                 {currentStatus === STATUS.APPROVED && currentFormId && (
                     isAdmin ||
-                    postApprovalEditors.map(Number).includes(Number(user.id)) ||
+                    (postApprovalEditors.map(Number).includes(Number(user.id)) && !isFormOwner) ||
                     (isManager && (user.managed_division_ids || []).map(Number).includes(Number(loadedForm?.division_id)))
                 ) && (
                     <button className="btn btn-sm" style={{ background: '#0ea5e9', color: '#fff' }} onClick={handleCreateEditableVersion}>
                         <Edit2 size={16} /> Edit New Version
                     </button>
                 )}
-                {/* Post-approval edit: Finalize button on draft forms for admin + permitted editors + division managers */}
+                {/* Form owner: Edit New Version (only if permitted by manager/admin) */}
+                {currentStatus === STATUS.APPROVED && currentFormId && !isAdmin && !isManager && isFormOwner &&
+                    postApprovalEditors.map(Number).includes(Number(user.id)) && (
+                    <button className="btn btn-sm" style={{ background: '#0ea5e9', color: '#fff' }} onClick={handleCreateEditableVersion}>
+                        <Edit2 size={16} /> Edit New Version
+                    </button>
+                )}
+                {/* Post-approval edit: Finalize button for admin + non-owner permitted editors + division managers */}
                 {currentStatus === STATUS.DRAFT && currentFormId && loadedForm?.parent_id && (
                     isAdmin ||
-                    postApprovalEditors.map(Number).includes(Number(user.id)) ||
+                    (postApprovalEditors.map(Number).includes(Number(user.id)) && !isFormOwner) ||
                     (isManager && (user.managed_division_ids || []).map(Number).includes(Number(loadedForm?.division_id)))
                 ) && (
                     <button className="btn btn-sm" style={{ background: '#16a34a', color: '#fff' }} onClick={handleFinalizeVersion}>
                         <CheckCircle size={16} /> Finalize Version
                     </button>
                 )}
-                {/* Admin: manage permitted editors on approved forms */}
+                {/* Form owner: Submit for Manager Review (on post-approval drafts) */}
+                {canSubmitManagerReview && (
+                    <button className="btn btn-sm" style={{ background: '#f59e0b', color: '#fff' }} onClick={handleSubmitManagerReview}>
+                        <Send size={16} /> Submit for Manager Review
+                    </button>
+                )}
+                {/* Manager/Admin: Approve or Reject pending_manager_review forms */}
+                {canManagerReview && (
+                    <>
+                        <button className="btn btn-sm" style={{ background: '#16a34a', color: '#fff' }} onClick={handleManagerApproveVersion}>
+                            <Check size={16} /> Approve Version
+                        </button>
+                        <button className="btn btn-sm" style={{ background: '#ef4444', color: '#fff' }} onClick={handleManagerRejectVersion}>
+                            <X size={16} /> Reject / Revise
+                        </button>
+                    </>
+                )}
+                {/* Admin/Manager: Allow Owner Edit toggle on approved forms */}
+                {(isAdmin || isManager) && currentStatus === STATUS.APPROVED && currentFormId && loadedForm?.created_by && (
+                    <button className="btn btn-sm" style={{
+                        background: postApprovalEditors.map(Number).includes(Number(loadedForm.created_by)) ? '#dc2626' : '#7c3aed',
+                        color: '#fff'
+                    }} onClick={handleAllowOwnerEdit}>
+                        <Users size={16} /> {postApprovalEditors.map(Number).includes(Number(loadedForm.created_by)) ? 'Revoke Owner Edit' : 'Allow Owner Edit'}
+                    </button>
+                )}
+                {/* Admin: manage all permitted editors on approved forms */}
                 {isAdmin && currentStatus === STATUS.APPROVED && currentFormId && (
                     <button className="btn btn-sm" style={{ background: '#64748b', color: '#fff' }} onClick={() => { fetchAllUsers(); setShowEditorsModal(true); }}>
                         <Users size={16} /> Editors

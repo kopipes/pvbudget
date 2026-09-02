@@ -59,7 +59,8 @@ const STATUS = {
     DRAFT: 'draft',
     PENDING: 'pending',
     REVISION: 'revision',
-    APPROVED: 'approved'
+    APPROVED: 'approved',
+    PENDING_MANAGER_REVIEW: 'pending_manager_review'
 };
 
 // ---- Check if user can edit a form ----
@@ -222,11 +223,34 @@ app.get('/api/forms/my', (req, res) => {
     });
 });
 
-// 3. GET /api/forms/pending (Corporate/Admin — pending approvals)
+// 3. GET /api/forms/pending (Corporate/Admin — pending approvals; Manager — pending_manager_review)
 app.get('/api/forms/pending', (req, res) => {
     const { role } = req.user;
-    if (role !== 'admin' && role !== 'corporate') {
+    if (role !== 'admin' && role !== 'corporate' && role !== 'manager') {
         return res.status(403).json({ error: 'Access denied' });
+    }
+
+    if (role === 'manager') {
+        // Managers see pending_manager_review forms from their managed divisions
+        db.all('SELECT division_id FROM manager_divisions WHERE manager_id = ?', [req.user.id], (err, rows) => {
+            const divIds = (rows || []).map(r => r.division_id);
+            if (divIds.length === 0) return res.json([]);
+            const placeholders = divIds.map(() => '?').join(',');
+            db.all(
+                `SELECT f.*, u.display_name as creator_name, u.division_id as user_division_id, div.name as division_name
+                 FROM forms f
+                 LEFT JOIN users u ON f.created_by = u.id
+                 LEFT JOIN divisions div ON COALESCE(f.division_id, u.division_id) = div.id
+                 WHERE f.status = ? AND COALESCE(f.division_id, u.division_id) IN (${placeholders})
+                 ORDER BY f.updated_at ASC`,
+                [STATUS.PENDING_MANAGER_REVIEW, ...divIds],
+                (err, rows) => {
+                    if (err) return res.status(500).json({ error: err.message });
+                    res.json(rows);
+                }
+            );
+        });
+        return;
     }
 
     db.all(
@@ -784,6 +808,136 @@ app.put('/api/forms/:id/finalize-version', (req, res) => {
                 }
             );
         }); // end manager_divisions check
+    });
+});
+
+// 14e. PUT /api/forms/:id/allow-owner-edit (Admin or division manager toggles owner in post_approval_editors)
+app.put('/api/forms/:id/allow-owner-edit', (req, res) => {
+    const { id } = req.params;
+    db.get('SELECT * FROM forms WHERE id = ?', [id], (err, form) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!form) return res.status(404).json({ error: 'Form not found' });
+
+        const isAdmin = req.user.role === 'admin';
+        db.all('SELECT division_id FROM manager_divisions WHERE manager_id = ?', [req.user.id], (err, rows) => {
+            const managedDivIds = (rows || []).map(r => Number(r.division_id));
+            const isManagerOfDivision = req.user.role === 'manager' && form.division_id && managedDivIds.includes(Number(form.division_id));
+            if (!isAdmin && !isManagerOfDivision) {
+                return res.status(403).json({ error: 'Only admin or the division manager can grant owner edit permission' });
+            }
+            const editors = JSON.parse(form.post_approval_editors || '[]').map(Number);
+            const ownerId = Number(form.created_by);
+            let newEditors, granted;
+            if (editors.includes(ownerId)) {
+                newEditors = editors.filter(e => e !== ownerId);
+                granted = false;
+            } else {
+                newEditors = [...editors, ownerId];
+                granted = true;
+            }
+            db.run(`UPDATE forms SET post_approval_editors = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+                [JSON.stringify(newEditors), id],
+                (err) => {
+                    if (err) return res.status(500).json({ error: err.message });
+                    res.json({ ok: true, granted, editors: newEditors, message: granted ? 'Owner edit permission granted' : 'Owner edit permission revoked' });
+                }
+            );
+        });
+    });
+});
+
+// 14f. PUT /api/forms/:id/submit-manager-review (Form owner submits draft for manager review)
+app.put('/api/forms/:id/submit-manager-review', (req, res) => {
+    const { id } = req.params;
+    db.get('SELECT * FROM forms WHERE id = ?', [id], (err, form) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!form) return res.status(404).json({ error: 'Form not found' });
+        if (form.status !== STATUS.DRAFT) return res.status(400).json({ error: 'Only draft forms can be submitted for manager review' });
+        if (String(form.created_by) !== String(req.user.id)) {
+            return res.status(403).json({ error: 'Only the form owner can submit for manager review' });
+        }
+        db.run(`UPDATE forms SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+            [STATUS.PENDING_MANAGER_REVIEW, id],
+            (err) => {
+                if (err) return res.status(500).json({ error: err.message });
+                res.json({ id, message: 'Form submitted for manager review' });
+            }
+        );
+    });
+});
+
+// 14g. PUT /api/forms/:id/manager-approve-version (Manager approves, auto-approves + archives old)
+app.put('/api/forms/:id/manager-approve-version', (req, res) => {
+    const { id } = req.params;
+    db.get('SELECT * FROM forms WHERE id = ?', [id], (err, form) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!form) return res.status(404).json({ error: 'Form not found' });
+        if (form.status !== STATUS.PENDING_MANAGER_REVIEW && form.status !== STATUS.DRAFT) {
+            return res.status(400).json({ error: 'Form must be in pending manager review or draft state' });
+        }
+        const isAdmin = req.user.role === 'admin';
+        db.all('SELECT division_id FROM manager_divisions WHERE manager_id = ?', [req.user.id], (err, rows) => {
+            const managedDivIds = (rows || []).map(r => Number(r.division_id));
+            const isManagerOfDivision = req.user.role === 'manager' && form.division_id && managedDivIds.includes(Number(form.division_id));
+            if (!isAdmin && !isManagerOfDivision) {
+                return res.status(403).json({ error: 'Only admin or the division manager can approve this version' });
+            }
+            const rootId = form.root_form_id || form.id;
+            db.run(
+                `UPDATE forms SET status = ?, approval_stage = 'final', approved_at = CURRENT_TIMESTAMP,
+                 approved_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+                [STATUS.APPROVED, req.user.id, id],
+                (err) => {
+                    if (err) return res.status(500).json({ error: err.message });
+                    db.run(
+                        `UPDATE forms SET status = 'archived', updated_at = CURRENT_TIMESTAMP
+                         WHERE (root_form_id = ? OR id = ?) AND status = ? AND id != ?`,
+                        [rootId, rootId, STATUS.APPROVED, id], () => {}
+                    );
+                    db.run(
+                        `INSERT INTO approval_history (form_id, action, note, actor_id, approval_stage)
+                         VALUES (?, 'approve', 'Approved by manager after owner edit', ?, 'manager')`,
+                        [id, req.user.id], () => {}
+                    );
+                    res.json({ id, message: `Version ${form.version_number} approved by manager.` });
+                }
+            );
+        });
+    });
+});
+
+// 14h. PUT /api/forms/:id/manager-reject-version (Manager rejects, sends back to owner as draft with note)
+app.put('/api/forms/:id/manager-reject-version', (req, res) => {
+    const { id } = req.params;
+    const { note } = req.body;
+    if (!note || !note.trim()) return res.status(400).json({ error: 'Rejection note is required' });
+    db.get('SELECT * FROM forms WHERE id = ?', [id], (err, form) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!form) return res.status(404).json({ error: 'Form not found' });
+        if (form.status !== STATUS.PENDING_MANAGER_REVIEW) {
+            return res.status(400).json({ error: 'Form must be in pending manager review state' });
+        }
+        const isAdmin = req.user.role === 'admin';
+        db.all('SELECT division_id FROM manager_divisions WHERE manager_id = ?', [req.user.id], (err, rows) => {
+            const managedDivIds = (rows || []).map(r => Number(r.division_id));
+            const isManagerOfDivision = req.user.role === 'manager' && form.division_id && managedDivIds.includes(Number(form.division_id));
+            if (!isAdmin && !isManagerOfDivision) {
+                return res.status(403).json({ error: 'Only admin or the division manager can reject this version' });
+            }
+            db.run(
+                `UPDATE forms SET status = ?, revision_note = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+                [STATUS.DRAFT, note, id],
+                (err) => {
+                    if (err) return res.status(500).json({ error: err.message });
+                    db.run(
+                        `INSERT INTO approval_history (form_id, action, note, actor_id, approval_stage)
+                         VALUES (?, 'reject', ?, ?, 'manager')`,
+                        [id, note, req.user.id], () => {}
+                    );
+                    res.json({ id, message: 'Form sent back to owner for revision' });
+                }
+            );
+        });
     });
 });
 
