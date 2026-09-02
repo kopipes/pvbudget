@@ -125,6 +125,7 @@ const db = new sqlite3.Database(dbPath, (err) => {
         db.run(`ALTER TABLE forms ADD COLUMN has_realisasi INTEGER DEFAULT 0`, () => {});
         db.run(`ALTER TABLE forms ADD COLUMN include_pph23 INTEGER DEFAULT 1`, () => {});
         db.run(`ALTER TABLE forms ADD COLUMN discount_pct REAL DEFAULT 0`, () => {});
+        db.run(`ALTER TABLE forms ADD COLUMN post_approval_editors TEXT DEFAULT '[]'`, () => {});
 
         // Create email_log table
         db.run(`CREATE TABLE IF NOT EXISTS email_log (

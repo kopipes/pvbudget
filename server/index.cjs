@@ -683,6 +683,93 @@ app.put('/api/forms/:id/unlock', (req, res) => {
     });
 });
 
+// 14b. PUT /api/forms/:id/post-approval-editors (Admin sets permitted editors)
+app.put('/api/forms/:id/post-approval-editors', (req, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+    const { id } = req.params;
+    const { editors } = req.body; // array of user IDs
+    if (!Array.isArray(editors)) return res.status(400).json({ error: 'editors must be an array' });
+    db.run(`UPDATE forms SET post_approval_editors = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        [JSON.stringify(editors), id],
+        (err) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ ok: true });
+        }
+    );
+});
+
+// 14c. PUT /api/forms/:id/create-editable-version (Admin or permitted editor creates new draft)
+app.put('/api/forms/:id/create-editable-version', (req, res) => {
+    const { id } = req.params;
+    db.get('SELECT * FROM forms WHERE id = ?', [id], (err, form) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!form) return res.status(404).json({ error: 'Form not found' });
+        if (form.status !== STATUS.APPROVED) return res.status(400).json({ error: 'Only approved forms can be edited this way' });
+
+        // Check permission: admin OR in post_approval_editors
+        const editors = JSON.parse(form.post_approval_editors || '[]');
+        const isPermitted = req.user.role === 'admin' || editors.map(Number).includes(Number(req.user.id));
+        if (!isPermitted) return res.status(403).json({ error: 'You do not have permission to create an editable version of this form' });
+
+        const rootId = form.root_form_id || form.id;
+        const newVersion = (form.version_number || 1) + 1;
+        const sql = `INSERT INTO forms
+            (form_type, project_no, event, venue, periode, periode_start, periode_end,
+             management_fee_pct, data, note, status, version_number, root_form_id,
+             parent_id, created_by, division_id, approval_stage, post_approval_editors)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+        const params = [
+            form.form_type, form.project_no, form.event, form.venue, form.periode,
+            form.periode_start, form.periode_end, form.management_fee_pct, form.data,
+            form.note, STATUS.DRAFT, newVersion, rootId,
+            form.id, form.created_by, form.division_id, 'pending_1st',
+            form.post_approval_editors || '[]'
+        ];
+        db.run(sql, params, function (err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ id: this.lastID, version: newVersion, message: `Version ${newVersion} draft created. Edit freely then click Finalize.` });
+        });
+    });
+});
+
+// 14d. PUT /api/forms/:id/finalize-version (Auto-approve draft, archive previous approved)
+app.put('/api/forms/:id/finalize-version', (req, res) => {
+    const { id } = req.params;
+    db.get('SELECT * FROM forms WHERE id = ?', [id], (err, form) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!form) return res.status(404).json({ error: 'Form not found' });
+        if (form.status !== STATUS.DRAFT) return res.status(400).json({ error: 'Only draft forms can be finalized' });
+
+        // Check permission: admin OR in post_approval_editors
+        const editors = JSON.parse(form.post_approval_editors || '[]');
+        const isPermitted = req.user.role === 'admin' || editors.map(Number).includes(Number(req.user.id));
+        if (!isPermitted) return res.status(403).json({ error: 'You do not have permission to finalize this form' });
+
+        const rootId = form.root_form_id || form.id;
+        // Auto-approve this version
+        db.run(
+            `UPDATE forms SET status = ?, approval_stage = 'final', approved_at = CURRENT_TIMESTAMP,
+             approved_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+            [STATUS.APPROVED, req.user.id, id],
+            (err) => {
+                if (err) return res.status(500).json({ error: err.message });
+                // Archive all other approved versions of this root
+                db.run(
+                    `UPDATE forms SET status = 'archived', updated_at = CURRENT_TIMESTAMP
+                     WHERE root_form_id = ? AND status = ? AND id != ?`,
+                    [rootId, STATUS.APPROVED, id], () => {}
+                );
+                db.run(
+                    `INSERT INTO approval_history (form_id, action, note, actor_id, approval_stage)
+                     VALUES (?, 'approve', 'Auto-approved via post-approval edit', ?, 'finalize')`,
+                    [id, req.user.id], () => {}
+                );
+                res.json({ id, message: `Version ${form.version_number} finalized and approved.` });
+            }
+        );
+    });
+});
+
 // 15. POST /api/forms/:id/create-po (Create PO from approved budget)
 // Allowed: User (form creator), Manager, Admin (NOT Corporate)
 app.post('/api/forms/:id/create-po', (req, res) => {

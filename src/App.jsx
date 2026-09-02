@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, PlusCircle, Save, FileDown, FilePlus, Search, X, AlertTriangle, LogOut, Shield, Building2, Send, Check, RefreshCw, Clock, CheckCircle, XCircle, History, Eye, LayoutDashboard, Receipt, GripVertical, Mail } from 'lucide-react';
+import { Plus, Trash2, PlusCircle, Save, FileDown, FilePlus, Search, X, AlertTriangle, LogOut, Shield, Building2, Send, Check, RefreshCw, Clock, CheckCircle, XCircle, History, Eye, LayoutDashboard, Receipt, GripVertical, Mail, Edit2, Users } from 'lucide-react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import * as XLSX from 'xlsx';
@@ -92,6 +92,9 @@ function App({ user, token, onLogout, initialFormId, onInitialFormLoaded }) {
     const [budgetMgmtFeePct, setBudgetMgmtFeePct] = useState(10);
     const [hasPO, setHasPO] = useState(false);
     const [poNumber, setPoNumber] = useState('');
+    const [postApprovalEditors, setPostApprovalEditors] = useState([]);
+    const [showEditorsModal, setShowEditorsModal] = useState(false);
+    const [allUsers, setAllUsers] = useState([]);
 
     const authHeaders = {
         'Content-Type': 'application/json',
@@ -537,6 +540,7 @@ function App({ user, token, onLogout, initialFormId, onInitialFormLoaded }) {
         setLoadedForm(null);
         setApprovalHistory([]);
         setOpenedFormId(null);
+        setPostApprovalEditors([]);
     };
 
     const handleSaveForm = async () => {
@@ -645,6 +649,48 @@ function App({ user, token, onLogout, initialFormId, onInitialFormLoaded }) {
         } catch (e) { await showDialog('alert', 'Failed to delete', 'Error'); }
     };
 
+    const handleCreateEditableVersion = async () => {
+        const confirmed = await showDialog('confirm', `Create an editable version ${currentVersion + 1} of this approved form? You can edit freely and finalize when ready.`, 'Edit New Version');
+        if (!confirmed) return;
+        try {
+            const res = await apiFetch(`${API}/api/forms/${currentFormId}/create-editable-version`, { method: 'PUT', headers: authHeaders });
+            const data = await res.json();
+            if (!res.ok) { await showDialog('alert', data.error || 'Failed', 'Error'); return; }
+            await showDialog('alert', data.message, 'New Version Created');
+            loadForm(data.id);
+        } catch (e) { await showDialog('alert', 'Failed to create editable version', 'Error'); }
+    };
+
+    const handleFinalizeVersion = async () => {
+        const confirmed = await showDialog('confirm', `Finalize and approve version ${currentVersion}? This will archive the previous approved version. This cannot be undone.`, 'Finalize Version');
+        if (!confirmed) return;
+        try {
+            const res = await apiFetch(`${API}/api/forms/${currentFormId}/finalize-version`, { method: 'PUT', headers: authHeaders });
+            const data = await res.json();
+            if (!res.ok) { await showDialog('alert', data.error || 'Failed', 'Error'); return; }
+            await showDialog('alert', data.message, 'Version Finalized');
+            loadForm(currentFormId);
+        } catch (e) { await showDialog('alert', 'Failed to finalize version', 'Error'); }
+    };
+
+    const handleSavePostApprovalEditors = async (editorIds) => {
+        try {
+            const res = await apiFetch(`${API}/api/forms/${currentFormId}/post-approval-editors`, {
+                method: 'PUT', headers: authHeaders,
+                body: JSON.stringify({ editors: editorIds })
+            });
+            if (!res.ok) { const d = await res.json(); await showDialog('alert', d.error || 'Failed', 'Error'); return; }
+            setPostApprovalEditors(editorIds);
+        } catch (e) { await showDialog('alert', 'Failed to save editors', 'Error'); }
+    };
+
+    const fetchAllUsers = async () => {
+        try {
+            const res = await apiFetch(`${API}/api/users`, { headers: authHeaders });
+            if (res.ok) setAllUsers(await res.json());
+        } catch {}
+    };
+
     const fetchForms = async (query = '', typeFilter = 'budget') => {
         try {
             const res = await apiFetch(`${API}/api/forms?query=${encodeURIComponent(query)}&type=${typeFilter}`, { headers: authHeaders });
@@ -691,6 +737,7 @@ function App({ user, token, onLogout, initialFormId, onInitialFormLoaded }) {
                 setIsReadOnly(form.readonly || false);
                 setIncludePph23(form.include_pph23 !== 0);
                 setDiscountPct(form.discount_pct || 0);
+                try { setPostApprovalEditors(JSON.parse(form.post_approval_editors || '[]')); } catch { setPostApprovalEditors([]); }
                 setBaseItemCountRealisasi(0);
                 const mgmtFee = form.management_fee_pct != null ? form.management_fee_pct : 10;
                 setEventData({
@@ -1058,6 +1105,54 @@ function App({ user, token, onLogout, initialFormId, onInitialFormLoaded }) {
             {showUserMgmt && <UserManagement token={token} onClose={() => setShowUserMgmt(false)} />}
             {showDivisionMgmt && <DivisionManagement token={token} onClose={() => setShowDivisionMgmt(false)} />}
             {showEmailLog && <EmailLogModal token={token} onClose={() => setShowEmailLog(false)} />}
+            {/* Permitted Editors Modal */}
+            {showEditorsModal && (
+                <div className="modal-overlay" onClick={() => setShowEditorsModal(false)}>
+                    <div className="modal-content" style={{ maxWidth: '480px' }} onClick={e => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Users size={18} /> Permitted Editors</h2>
+                            <button onClick={() => setShowEditorsModal(false)}><X size={24} /></button>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                            <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                                Selected users can create and finalize a new version of this approved form without going through the approval process.
+                            </p>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                {allUsers.filter(u => u.role !== 'corporate' && u.role !== 'purchasing').map(u => {
+                                    const checked = postApprovalEditors.map(Number).includes(Number(u.id));
+                                    return (
+                                        <label key={u.id} style={{
+                                            display: 'flex', alignItems: 'center', gap: '0.4rem',
+                                            padding: '4px 10px', borderRadius: '6px', cursor: 'pointer',
+                                            border: `1px solid ${checked ? 'var(--primary)' : 'var(--border)'}`,
+                                            background: checked ? 'var(--primary-light, #eff6ff)' : 'transparent',
+                                            fontSize: '13px', userSelect: 'none'
+                                        }}>
+                                            <input type="checkbox" checked={checked} style={{ margin: 0 }}
+                                                onChange={() => {
+                                                    const numId = Number(u.id);
+                                                    const updated = checked
+                                                        ? postApprovalEditors.filter(i => Number(i) !== numId)
+                                                        : [...postApprovalEditors, numId];
+                                                    handleSavePostApprovalEditors(updated);
+                                                }}
+                                            />
+                                            <span>{u.display_name}</span>
+                                            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>({u.role})</span>
+                                        </label>
+                                    );
+                                })}
+                                {allUsers.filter(u => u.role !== 'corporate' && u.role !== 'purchasing').length === 0 && (
+                                    <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>No eligible users found.</p>
+                                )}
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                <button className="btn btn-primary btn-sm" onClick={() => setShowEditorsModal(false)}>Done</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
             {/* DASHBOARD VIEW */}
             {showDashboard ? (
                 <Dashboard user={user} token={token} onLogout={onLogout} onOpenForm={(id) => { loadForm(id); }} />
@@ -1218,6 +1313,24 @@ function App({ user, token, onLogout, initialFormId, onInitialFormLoaded }) {
                 {isAdmin && currentStatus === STATUS.APPROVED && currentFormId && (
                     <button className="btn btn-sm" style={{ background: '#8b5cf6', color: '#fff' }} onClick={handleUnlockForm}>
                         <RefreshCw size={16} /> Unlock for Revision
+                    </button>
+                )}
+                {/* Post-approval edit: Edit New Version button for admin + permitted editors */}
+                {currentStatus === STATUS.APPROVED && currentFormId && (isAdmin || postApprovalEditors.map(Number).includes(Number(user.id))) && (
+                    <button className="btn btn-sm" style={{ background: '#0ea5e9', color: '#fff' }} onClick={handleCreateEditableVersion}>
+                        <Edit2 size={16} /> Edit New Version
+                    </button>
+                )}
+                {/* Post-approval edit: Finalize button on draft forms for admin + permitted editors */}
+                {currentStatus === STATUS.DRAFT && currentFormId && loadedForm?.parent_id && (isAdmin || postApprovalEditors.map(Number).includes(Number(user.id))) && (
+                    <button className="btn btn-sm" style={{ background: '#16a34a', color: '#fff' }} onClick={handleFinalizeVersion}>
+                        <CheckCircle size={16} /> Finalize Version
+                    </button>
+                )}
+                {/* Admin: manage permitted editors on approved forms */}
+                {isAdmin && currentStatus === STATUS.APPROVED && currentFormId && (
+                    <button className="btn btn-sm" style={{ background: '#64748b', color: '#fff' }} onClick={() => { fetchAllUsers(); setShowEditorsModal(true); }}>
+                        <Users size={16} /> Editors
                     </button>
                 )}
                 {/* Create PO button - only for approved budget forms without PO (Admin/Manager only, not Corporate) */}
