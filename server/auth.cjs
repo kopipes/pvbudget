@@ -238,17 +238,22 @@ function setupAuthRoutes(app) {
                 if (err) {
                     return res.status(500).json({ error: err.message });
                 }
-                res.json({
-                    token,
-                    user: {
-                        id: user.id,
-                        username: user.username,
-                        display_name: user.display_name,
-                        role: user.role,
-                        manager_id: user.manager_id,
-                        division_id: user.division_id,
-                        division_name: user.division_name || ''
-                    }
+                // Fetch managed divisions for manager role
+                db.all('SELECT division_id FROM manager_divisions WHERE manager_id = ?', [user.id], (err, rows) => {
+                    const managed_division_ids = (rows || []).map(r => r.division_id);
+                    res.json({
+                        token,
+                        user: {
+                            id: user.id,
+                            username: user.username,
+                            display_name: user.display_name,
+                            role: user.role,
+                            manager_id: user.manager_id,
+                            division_id: user.division_id,
+                            division_name: user.division_name || '',
+                            managed_division_ids
+                        }
+                    });
                 });
             });
         });

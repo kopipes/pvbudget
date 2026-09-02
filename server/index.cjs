@@ -699,7 +699,7 @@ app.put('/api/forms/:id/post-approval-editors', (req, res) => {
     );
 });
 
-// 14c. PUT /api/forms/:id/create-editable-version (Admin or permitted editor creates new draft)
+// 14c. PUT /api/forms/:id/create-editable-version (Admin, permitted editor, or division manager)
 app.put('/api/forms/:id/create-editable-version', (req, res) => {
     const { id } = req.params;
     db.get('SELECT * FROM forms WHERE id = ?', [id], (err, form) => {
@@ -707,18 +707,25 @@ app.put('/api/forms/:id/create-editable-version', (req, res) => {
         if (!form) return res.status(404).json({ error: 'Form not found' });
         if (form.status !== STATUS.APPROVED) return res.status(400).json({ error: 'Only approved forms can be edited this way' });
 
-        // Check permission: admin OR in post_approval_editors
         const editors = JSON.parse(form.post_approval_editors || '[]');
-        const isPermitted = req.user.role === 'admin' || editors.map(Number).includes(Number(req.user.id));
-        if (!isPermitted) return res.status(403).json({ error: 'You do not have permission to create an editable version of this form' });
+        const isAdmin = req.user.role === 'admin';
+        const inEditorsList = editors.map(Number).includes(Number(req.user.id));
 
-        const rootId = form.root_form_id || form.id;
-        const newVersion = (form.version_number || 1) + 1;
-        const sql = `INSERT INTO forms
-            (form_type, project_no, event, venue, periode, periode_start, periode_end,
-             management_fee_pct, data, note, status, version_number, root_form_id,
-             parent_id, created_by, division_id, approval_stage, post_approval_editors)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+        // Check if user manages this form's division
+        db.all('SELECT division_id FROM manager_divisions WHERE manager_id = ?', [req.user.id], (err, rows) => {
+            const managedDivIds = (rows || []).map(r => Number(r.division_id));
+            const isManagerOfDivision = req.user.role === 'manager' && form.division_id && managedDivIds.includes(Number(form.division_id));
+            if (!isAdmin && !inEditorsList && !isManagerOfDivision) {
+                return res.status(403).json({ error: 'You do not have permission to create an editable version of this form' });
+            }
+
+            const rootId = form.root_form_id || form.id;
+            const newVersion = (form.version_number || 1) + 1;
+            const sql = `INSERT INTO forms
+                (form_type, project_no, event, venue, periode, periode_start, periode_end,
+                 management_fee_pct, data, note, status, version_number, root_form_id,
+                 parent_id, created_by, division_id, approval_stage, post_approval_editors)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
         const params = [
             form.form_type, form.project_no, form.event, form.venue, form.periode,
             form.periode_start, form.periode_end, form.management_fee_pct, form.data,
@@ -730,6 +737,7 @@ app.put('/api/forms/:id/create-editable-version', (req, res) => {
             if (err) return res.status(500).json({ error: err.message });
             res.json({ id: this.lastID, version: newVersion, message: `Version ${newVersion} draft created. Edit freely then click Finalize.` });
         });
+        }); // end manager_divisions check
     });
 });
 
@@ -741,33 +749,41 @@ app.put('/api/forms/:id/finalize-version', (req, res) => {
         if (!form) return res.status(404).json({ error: 'Form not found' });
         if (form.status !== STATUS.DRAFT) return res.status(400).json({ error: 'Only draft forms can be finalized' });
 
-        // Check permission: admin OR in post_approval_editors
         const editors = JSON.parse(form.post_approval_editors || '[]');
-        const isPermitted = req.user.role === 'admin' || editors.map(Number).includes(Number(req.user.id));
-        if (!isPermitted) return res.status(403).json({ error: 'You do not have permission to finalize this form' });
+        const isAdmin = req.user.role === 'admin';
+        const inEditorsList = editors.map(Number).includes(Number(req.user.id));
 
-        const rootId = form.root_form_id || form.id;
-        // Auto-approve this version
-        db.run(
-            `UPDATE forms SET status = ?, approval_stage = 'final', approved_at = CURRENT_TIMESTAMP,
-             approved_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-            [STATUS.APPROVED, req.user.id, id],
-            (err) => {
-                if (err) return res.status(500).json({ error: err.message });
-                // Archive all other approved versions of this root (including the root form itself)
-                db.run(
-                    `UPDATE forms SET status = 'archived', updated_at = CURRENT_TIMESTAMP
-                     WHERE (root_form_id = ? OR id = ?) AND status = ? AND id != ?`,
-                    [rootId, rootId, STATUS.APPROVED, id], () => {}
-                );
-                db.run(
-                    `INSERT INTO approval_history (form_id, action, note, actor_id, approval_stage)
-                     VALUES (?, 'approve', 'Auto-approved via post-approval edit', ?, 'finalize')`,
-                    [id, req.user.id], () => {}
-                );
-                res.json({ id, message: `Version ${form.version_number} finalized and approved.` });
+        // Check if user manages this form's division
+        db.all('SELECT division_id FROM manager_divisions WHERE manager_id = ?', [req.user.id], (err, rows) => {
+            const managedDivIds = (rows || []).map(r => Number(r.division_id));
+            const isManagerOfDivision = req.user.role === 'manager' && form.division_id && managedDivIds.includes(Number(form.division_id));
+            if (!isAdmin && !inEditorsList && !isManagerOfDivision) {
+                return res.status(403).json({ error: 'You do not have permission to finalize this form' });
             }
-        );
+
+            const rootId = form.root_form_id || form.id;
+            // Auto-approve this version
+            db.run(
+                `UPDATE forms SET status = ?, approval_stage = 'final', approved_at = CURRENT_TIMESTAMP,
+                 approved_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+                [STATUS.APPROVED, req.user.id, id],
+                (err) => {
+                    if (err) return res.status(500).json({ error: err.message });
+                    // Archive all other approved versions of this root (including the root form itself)
+                    db.run(
+                        `UPDATE forms SET status = 'archived', updated_at = CURRENT_TIMESTAMP
+                         WHERE (root_form_id = ? OR id = ?) AND status = ? AND id != ?`,
+                        [rootId, rootId, STATUS.APPROVED, id], () => {}
+                    );
+                    db.run(
+                        `INSERT INTO approval_history (form_id, action, note, actor_id, approval_stage)
+                         VALUES (?, 'approve', 'Auto-approved via post-approval edit', ?, 'finalize')`,
+                        [id, req.user.id], () => {}
+                    );
+                    res.json({ id, message: `Version ${form.version_number} finalized and approved.` });
+                }
+            );
+        }); // end manager_divisions check
     });
 });
 

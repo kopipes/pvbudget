@@ -1315,14 +1315,22 @@ function App({ user, token, onLogout, initialFormId, onInitialFormLoaded }) {
                         <RefreshCw size={16} /> Unlock for Revision
                     </button>
                 )}
-                {/* Post-approval edit: Edit New Version button for admin + permitted editors */}
-                {currentStatus === STATUS.APPROVED && currentFormId && (isAdmin || postApprovalEditors.map(Number).includes(Number(user.id))) && (
+                {/* Post-approval edit: Edit New Version button for admin + permitted editors + division managers */}
+                {currentStatus === STATUS.APPROVED && currentFormId && (
+                    isAdmin ||
+                    postApprovalEditors.map(Number).includes(Number(user.id)) ||
+                    (isManager && (user.managed_division_ids || []).map(Number).includes(Number(loadedForm?.division_id)))
+                ) && (
                     <button className="btn btn-sm" style={{ background: '#0ea5e9', color: '#fff' }} onClick={handleCreateEditableVersion}>
                         <Edit2 size={16} /> Edit New Version
                     </button>
                 )}
-                {/* Post-approval edit: Finalize button on draft forms for admin + permitted editors */}
-                {currentStatus === STATUS.DRAFT && currentFormId && loadedForm?.parent_id && (isAdmin || postApprovalEditors.map(Number).includes(Number(user.id))) && (
+                {/* Post-approval edit: Finalize button on draft forms for admin + permitted editors + division managers */}
+                {currentStatus === STATUS.DRAFT && currentFormId && loadedForm?.parent_id && (
+                    isAdmin ||
+                    postApprovalEditors.map(Number).includes(Number(user.id)) ||
+                    (isManager && (user.managed_division_ids || []).map(Number).includes(Number(loadedForm?.division_id)))
+                ) && (
                     <button className="btn btn-sm" style={{ background: '#16a34a', color: '#fff' }} onClick={handleFinalizeVersion}>
                         <CheckCircle size={16} /> Finalize Version
                     </button>
