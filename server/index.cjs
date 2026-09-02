@@ -753,11 +753,11 @@ app.put('/api/forms/:id/finalize-version', (req, res) => {
             [STATUS.APPROVED, req.user.id, id],
             (err) => {
                 if (err) return res.status(500).json({ error: err.message });
-                // Archive all other approved versions of this root
+                // Archive all other approved versions of this root (including the root form itself)
                 db.run(
                     `UPDATE forms SET status = 'archived', updated_at = CURRENT_TIMESTAMP
-                     WHERE root_form_id = ? AND status = ? AND id != ?`,
-                    [rootId, STATUS.APPROVED, id], () => {}
+                     WHERE (root_form_id = ? OR id = ?) AND status = ? AND id != ?`,
+                    [rootId, rootId, STATUS.APPROVED, id], () => {}
                 );
                 db.run(
                     `INSERT INTO approval_history (form_id, action, note, actor_id, approval_stage)
