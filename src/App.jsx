@@ -1375,6 +1375,9 @@ function App({ user, token, onLogout, initialFormId, onInitialFormLoaded }) {
                     {statusBadge(currentStatus)}
                     {currentVersion > 1 && <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Rev-{currentVersion}</span>}
                     <span>• Form Owner: <strong style={{ color: 'var(--text-main)' }}>{eventData.creatorName}</strong></span>
+                    {loadedForm?.submitted_by_name && (
+                        <span>• Submitted by: <strong style={{ color: 'var(--text-main)' }}>{loadedForm.submitted_by_name}</strong></span>
+                    )}
                     {eventData.divisionId && divisions.find(d => d.id === parseInt(eventData.divisionId)) && (
                         <span>• {divisions.find(d => d.id === parseInt(eventData.divisionId)).name}</span>
                     )}

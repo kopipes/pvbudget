@@ -289,6 +289,7 @@ app.get('/api/forms/:id', (req, res) => {
           (SELECT display_name FROM users WHERE id = f.approved_by_1) as approver_1_name,
           (SELECT display_name FROM users WHERE id = f.approved_by_2) as approver_2_name,
           (SELECT display_name FROM users WHERE id = f.rejected_by) as rejector_name,
+          (SELECT display_name FROM users WHERE id = f.submitted_by) as submitted_by_name,
           COALESCE(f.has_realisasi, 0) as has_realisasi
          FROM forms f
          LEFT JOIN users u ON f.created_by = u.id
@@ -487,8 +488,8 @@ app.post('/api/forms/:id/submit', (req, res) => {
                 return res.status(400).json({ error: 'Only draft or revision forms can be submitted' });
             }
             db.run(
-                `UPDATE forms SET status = ?, submitted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-                [STATUS.PENDING, id],
+                `UPDATE forms SET status = ?, submitted_at = CURRENT_TIMESTAMP, submitted_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+                [STATUS.PENDING, req.user.id, id],
                 function (err) {
                     if (err) return res.status(500).json({ error: err.message });
                     res.json({ id, message: 'Form submitted for approval' });
