@@ -1332,10 +1332,10 @@ function App({ user, token, onLogout, initialFormId, onInitialFormLoaded }) {
 
                 {/* TOP ACTION BAR */}
                 <div className="top-action-bar">
-                {(currentStatus === STATUS.DRAFT || isAdmin) && !isCorporate && !loadedForm?.parent_id && (
+                {(currentStatus === STATUS.DRAFT || isAdmin) && !isCorporate && !(currentStatus === STATUS.DRAFT && loadedForm?.parent_id) && (
                     <button className="btn btn-secondary btn-sm" onClick={handleNewForm}><FilePlus size={16} /> New Form</button>
                 )}
-                {currentStatus === STATUS.DRAFT && !loadedForm?.parent_id && (
+                {currentStatus === STATUS.DRAFT && !(currentStatus === STATUS.DRAFT && loadedForm?.parent_id) && (
                     <button className="btn btn-secondary btn-sm" onClick={openLoadModal}>
                         <Search size={16} /> Load / Use Template
                     </button>
@@ -1344,7 +1344,7 @@ function App({ user, token, onLogout, initialFormId, onInitialFormLoaded }) {
                 {canEdit && activeTab === 'budget' && (
                     <button className="btn btn-secondary btn-sm" onClick={handleSaveForm}><Save size={16} /> Save Form</button>
                 )}
-                {canSubmit && currentFormId && !loadedForm?.parent_id && (
+                {canSubmit && currentFormId && !(currentStatus === STATUS.DRAFT && loadedForm?.parent_id) && (
                     <button className="btn btn-primary btn-sm" onClick={handleSubmitForm} style={{ background: 'var(--primary)', color: '#000' }}>
                         <Send size={16} /> Submit for Approval
                     </button>
