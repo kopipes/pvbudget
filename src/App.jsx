@@ -1332,7 +1332,7 @@ function App({ user, token, onLogout, initialFormId, onInitialFormLoaded }) {
 
                 {/* TOP ACTION BAR */}
                 <div className="top-action-bar">
-                {(currentStatus === STATUS.DRAFT || isAdmin) && !isCorporate && !(currentStatus === STATUS.DRAFT && loadedForm?.parent_id) && (
+                {(currentStatus === STATUS.DRAFT || isAdmin) && !isCorporate && !(currentStatus === STATUS.DRAFT && loadedForm?.parent_id) && currentStatus !== STATUS.REVISION && (
                     <button className="btn btn-secondary btn-sm" onClick={handleNewForm}><FilePlus size={16} /> New Form</button>
                 )}
                 {currentStatus === STATUS.DRAFT && !(currentStatus === STATUS.DRAFT && loadedForm?.parent_id) && (
